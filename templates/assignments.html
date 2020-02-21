@@ -1,0 +1,39 @@
+{% load static %}
+<html>
+    <head>
+
+        <link type="text/css" rel="stylesheet" href="{%  static "/3rdParty/jsgrid.min.css" %}"/>
+        <link type="text/css" rel="stylesheet" href="{%  static "/3rdParty/jsgrid-theme.min.css" %}"/>
+        <link rel="stylesheet" href="{%  static "/3rdParty/jquery-ui.css" %}"/>
+        <link type="text/css" rel="stylesheet" href="{%  static "/common.css" %}"/>
+        <script src="{% static "/3rdParty/jquery.js" %}"></script>
+        <script src="{% static "/3rdParty/jquery-ui.js" %}"></script>
+        <script type="text/javascript" src="{%  static "/3rdParty/jsgrid.min.js" %}"></script>
+        <script type="text/javascript" src="{%  static "/ui.js" %}"></script>
+        <!--
+        <link rel="stylesheet" href="{% static "/jqwidgets/styles/jqx.base.css" %}" type="text/css" />
+        <script type="text/javascript" src="{%  static "/jqwidgets/jqxcore.js" %}"></script>
+        <script type="text/javascript" src="{%  static "/jqwidgets/jqxdata.js" %}"></script>
+        <script type="text/javascript" src="{%  static "./jqwidgets/jqxbuttons.js" %}"></script>
+        <script type="text/javascript" src="{%  static "/jqwidgets/jqxscrollbar.js" %}"></script>
+        <script type="text/javascript" src="{%  static "/jqwidgets/jqxlistbox.js" %}"></script>
+        <script type="text/javascript" src="{%  static "/jqwidgets/jqxdropdownlist.js" %}"></script>
+        <script type="text/javascript" src="{%  static "/jqwidgets/jqxdatatable.js" %}"></script>
+        <script type="text/javascript" src="{%  static "/jqwidgets/jqxtreegrid.js" %}"></script>
+        -->
+   <!--     <script src="{% static "/3rdParty/ck5/ckeditor.js" %}">
+   </script>-->
+
+    </head>
+    <body >
+    <a href='/project/entity/list/{"entity_type":"project"}'>Projects</a>
+    <a href='/project/entity/list/{"entity_type":"teammember"}'>Team</a>
+    <a href='/project/entity/list/{"entity_type":"assignment"}'>Assignment</a>
+
+    <div id="assignment_table"></div>
+    <script>
+        var ui = new AssignmentUI("assignment_table");
+        ui.show();
+  </script>
+    </body>
+</html>

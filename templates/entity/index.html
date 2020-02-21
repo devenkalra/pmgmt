@@ -1,0 +1,15 @@
+{% extends 'base.html' %}
+
+{% block content %}
+
+    <div  id="jsGrid"></div>
+    <script>
+        var entityType= "{{ entityType }}";
+        var entityTypePlural = "{{ entityTypePlural }}";
+        var entityUi = new GridUI(entityType, entityTypePlural)
+        EntityData.getEntities(entityType).done(function(response){
+            var _grid = entityUi.showGrid("jsGrid", response)
+        })
+    </script>
+
+{% endblock %}

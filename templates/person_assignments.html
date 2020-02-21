@@ -1,0 +1,24 @@
+{% extends 'base.html' %}
+
+{% block content %}
+
+    <div id="person_name"></div>
+    Quarter: <div id="quarter_select"></div>
+
+
+    <div id="assignments"></div>
+    <button id="button_save">Save</button>
+    <button id="button_cancel">Cancel</button>
+
+    <script>
+        var entityType= "{{ entityType }}";
+        var entityTypePlural = "{{ entityTypePlural }}";
+        var person_id = "{{ person_id }}";
+        var quarter_id = "{{  quarter_id }}";
+
+        var ui = new PersonAssignmentUI(person_id, {"name":"person_name",
+            "assignments":"assignments"});
+        ui.show();
+    </script>
+
+{% endblock %}
