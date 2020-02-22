@@ -194,6 +194,15 @@ def person_assignments(request, id, quarter):
                       }
                   )
 
+def project_assignments(request, id, quarter):
+    return render(request, 'project_assignments.html',
+                      {
+                          'entityType':"person",
+                          'entityTypePlural':"persons",
+                          'project_id': id,
+                          'quarter_id': quarter,
+                      }
+                  )
 
 def create_filter_object(filter):
     filter_components = filter.keys()

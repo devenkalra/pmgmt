@@ -2,7 +2,7 @@
 
 {% block content %}
 
-    <div id="person_name"></div>
+    <div id="project_name"></div>
     Quarter: <div id="quarter_select_div"></div>
 
 
@@ -13,10 +13,10 @@
     <script>
         var entityType= "{{ entityType }}";
         var entityTypePlural = "{{ entityTypePlural }}";
-        var person_id = "{{ person_id }}";
+        var project_id = "{{ project_id }}";
         var quarter_id = "{{  quarter_id }}";
 
-        var ui = new PersonAssignmentUI(person_id, {"name":"person_name",
+        var ui = new ProjectAssignmentUI(project_id, {"name":"project_name",
             "assignments":"assignments"});
         ui.show();
         $("#button_cancel").on("click",

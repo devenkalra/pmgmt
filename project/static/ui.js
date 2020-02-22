@@ -1,3 +1,27 @@
+class Utils {
+    static csrfSafeMethod(method) {
+        // these HTTP methods do not require CSRF protection
+        return (/^(GET|HEAD|OPTIONS|TRACE)$/.test(method));
+    }
+
+    static getCookie(name) {
+        var cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            var cookies = document.cookie.split(';');
+            for (var i = 0; i < cookies.length; i++) {
+                var cookie = cookies[i].trim();
+                // Does this cookie string begin with the name we want?
+                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
+            }
+        }
+        return cookieValue;
+    }
+
+}
+
 class EntityData {
 
     static getEntity(entity_type, entity_id) {
@@ -38,6 +62,154 @@ class EntityData {
     }
 }
 
+class ProjectAssignmentUI {
+    constructor(id, divnames) {
+        this.divnames = divnames;
+        this.project_id = id;
+        this.person_assignments = [];
+        this.grid = null;
+    }
+
+    deleteItem(item) {
+        var id = item.id;
+
+        var csrftoken = Utils.getCookie('csrftoken');
+        $.ajaxSetup({
+            beforeSend: function (xhr, settings) {
+                if (!Utils.csrfSafeMethod(settings.type) && !this.crossDomain) {
+                    xhr.setRequestHeader("X-CSRFToken", csrftoken);
+                }
+            }
+        });
+        var delete_array = [id];
+        $.ajax({
+            url: "/project/api/entities/update",
+            method: "POST",
+            data: JSON.stringify({
+                "delete": delete_array,
+                "add": [],
+                "entity_type": "assignment"
+            }),
+            contentType: 'application/json',
+            dataType: 'json',
+        });
+
+    }
+
+    show() {
+        var self = this;
+
+        function set_up_quarters(quarters, qid) {
+            var str = "<select id='quarter_select'>";
+            var selected = "";
+            for (var i = 0; i < quarters.length; i++) {
+                var selected = "";
+                if (quarters[i].id == qid) {
+                    selected = "selected";
+                }
+                str += `<option ${selected} value="${quarters[i].id}">${quarters[i].name}</option>`
+            }
+            str += "</select>";
+            $("#quarter_select_div").html(str);
+            $("#quarter_select").on("change", function () {
+                var val = $("#quarter_select").val();
+                document.location = `/project/project_assignments/${project_id}/${val}`;
+            })
+        }
+
+
+        /*
+        Project
+            Quarter:
+                Person1:
+                    OKR Assignment11
+                    OKR  Assignment12
+                Person2:
+                    Person2 Assignment2
+
+         */
+        function create_select(name, data, selected_id) {
+            var str = "";
+            str += `<select class="js-example-basic-single" name="${name}${i}" id="${name}${i}">`;
+            str += `<option value="0"></option>`
+
+            for (var j = 0; j < data.length; j++) {
+                var selected = "";
+                if (data[i].okr_id == data[j].okr_id) {
+                    selected = "selected";
+                }
+                str += `<option ${selected} value="${okrs[j].okr_id}">${okrs[j].okr}</option>`
+            }
+            str += `</select>`;
+        }
+
+        function add_person_assignment(assignment) {
+            if (!Object.keys(this.person_assignments).includes(assignment.person_id)) {
+                this.person_assignments[assignment.person_id] = [];
+            }
+
+            this.person_assignments[assignment.person_id].push({
+                "okr_id": assignment.okr_id,
+                "okr": assignment.okr,
+                "assignment": assignment.assignment
+            });
+        }
+
+        function createGridMap() {
+            var map = {};
+            map["id"] = {display: "hidden"}
+            map["teammember"] = {width: 100, display: "Person", "type": "text"}
+            map["okr"] = {width: 200, display: "OKR", "type": "text"}
+            map["assignment"] = {width: 200, display: "Assignment", "type": "text"}
+            self.grid_map = map;
+        }
+
+
+        function createGridData() {
+            self.data = self.assignments;
+        }
+
+        function done_func(responses) {
+            var assignments = responses[0]["data"]["entities"];
+            var persons = responses[1]["data"]["entities"];
+            var divs = self.divnames;
+            var quarters = responses[2]["data"]["entities"];
+            self.assignments = assignments;
+            self.persons = persons;
+            self.quarters = quarters;
+            set_up_quarters(quarters, quarter_id);
+            createGridMap();
+            createGridData();
+            self.grid = new ProjectAssignmentGridUI(self.divnames["assignments"], self.grid_map, self.data, self);
+            self.grid.show(self.divnames["assignments"]);
+
+        }
+
+        var promises = [];
+        promises.push(
+            $.ajax({
+                url: `/project/api/assignment/summary/` +
+                    `{"filter":{"quarter_id":[${quarter_id}],"project_id":[${self.project_id}]}}`,
+                method: "GET"
+            }));
+        promises.push($.ajax({
+            url: `/project/api/entity/list/` +
+                `{"entity_type":"teammember"}`,
+            method: "GET"
+        }));
+        promises.push($.ajax({
+            url: `/project/api/entity/list/` +
+                `{"entity_type":"quarter"}`,
+            method: "GET"
+        }))
+
+        Promise.all(promises).then(done_func);
+
+
+        // http://localhost:8000/project/api/assignment/summary/%7B%22filter%22:%7B%22teammember.id%22:[2]%7D%7D
+    }
+}
+
 class PersonAssignmentUI {
     constructor(id, divnames) {
         this.divnames = divnames;
@@ -47,26 +219,61 @@ class PersonAssignmentUI {
     show() {
         var self = this;
 
+
         function set_up_quarters(quarters, qid) {
-            var str = "<select>";
+            var str = "<select id='quarter_select'>";
             var selected = "";
             for (var i = 0; i < quarters.length; i++) {
                 var selected = "";
-                if (quarters.id == qid) {
+                if (quarters[i].id == qid) {
                     selected = "selected";
                 }
                 str += `<option ${selected} value="${quarters[i].id}">${quarters[i].name}</option>`
             }
             str += "</select>";
-            $("#quarter_select").html(str);
+            $("#quarter_select_div").html(str);
+            $("#quarter_select").on("change", function () {
+                var val = $("#quarter_select").val();
+                document.location = `/project/person_assignments/${person_id}/${val}`;
+            })
+        }
+
+
+        function createGridMap() {
+            var map = {};
+            map["id"] = {display: "hidden"}
+            map["person"] = {width: 100}
+            map["okr"] = {width: 200}
+            map["assignment"] = {width: 200}
+            this.grid_map = map;
+        }
+
+        function createGridData() {
+            var data = [];
+            var assignments = this.assignments;
+            for (var i = 0; i < assignments; i++) {
+                data['id'] = assignments.id;
+                data['person'] = assignments.person;
+                data['okr'] = assignments.okr;
+                data['assignment'] = assignments.assignment;
+            }
         }
 
         function done_func(responses) {
-            var assignments = responses[0]["data"]["entities"];
-            var person = responses[1]["data"]["entities"][0];
-            var okrs = responses[2]["data"]["entities"];
+            this.assignments = responses[0]["data"]["entities"];
+            var assignments = this.assignments;
+            this.person = responses[1]["data"]["entities"][0];
+            var person = this.person;
+            this.okrs = responses[2]["data"]["entities"];
+            var okrs = this.okrs;
+
             var divs = self.divnames;
             var quarters = responses[3]["data"]["entities"];
+            this.quarters = quarters;
+
+            createGridMap();
+            createGridData();
+            this.grid = ProjectAssignmentGridUI(this.divnames["assignments"], this.map, this.data)
             $("#" + divs['name']).html(person.name);
             set_up_quarters(quarters, quarter_id);
             var str = "<table>";
@@ -129,26 +336,6 @@ class PersonAssignmentUI {
                     }
                 }
 
-                function csrfSafeMethod(method) {
-                    // these HTTP methods do not require CSRF protection
-                    return (/^(GET|HEAD|OPTIONS|TRACE)$/.test(method));
-                }
-
-                function getCookie(name) {
-                    var cookieValue = null;
-                    if (document.cookie && document.cookie !== '') {
-                        var cookies = document.cookie.split(';');
-                        for (var i = 0; i < cookies.length; i++) {
-                            var cookie = cookies[i].trim();
-                            // Does this cookie string begin with the name we want?
-                            if (cookie.substring(0, name.length + 1) === (name + '=')) {
-                                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
-                                break;
-                            }
-                        }
-                    }
-                    return cookieValue;
-                }
 
                 var csrftoken = getCookie('csrftoken');
                 $.ajaxSetup({
@@ -509,7 +696,7 @@ class AssignmentUI {
     }
 }
 
-class GridUI {
+class GridUIX {
 
     constructor(entityType, entityTypePlural) {
         this.entityType = entityType;
@@ -542,6 +729,29 @@ class GridUI {
         }
     }
 
+
+    createOperations(data) {
+        var self = this;
+        for (var i = 0; i < data.length; i++) {
+            var item = data[i];
+            var quarter_id = 1;
+            switch (entityType) {
+                case "teammember":
+                    data[i]["Ops"] =
+                        `<input class="jsgrid-button jsgrid-edit-button"  id="assign_${data[i]['id']}"  ` +
+                        `onclick=document.location="/project/person_assignments/${data[i]['id']}/${quarter_id}" ` +
+                        `"type="button" title="Assign"/>`;
+                    break;
+                case "project":
+                    data[i]["Ops"] =
+                        `<input class="jsgrid-button jsgrid-edit-button"  id="assign_${data[i]['id']}"  ` +
+                        `onclick=document.location="/project/project_assignments/${data[i]['id']}/${quarter_id}" ` +
+                        `"type="button" title="Assign"/>`;
+                    break;
+            }
+        }
+    }
+
     createActions(data) {
         var self = this;
         for (var i = 0; i < data.length; i++) {
@@ -552,18 +762,30 @@ class GridUI {
         }
     }
 
+    addOperatorColumn(fields) {
+        fields.unshift({name: "Ops", type: "text", width: 25})
+
+    }
+
+    addActionColumn(fields) {
+        fields.push({name: "Actions", type: "text", width: 25})
+
+    }
+
     showGrid(div, response) {
         var myself = this;
-        var data = response["data"]["entities"];
-        var fields = this.fields_for_js_grid(response["data"]["field_map"]);
 
+        var data = response["data"]["entities"];
+        this.createOperations(data);
+        var fields = this.fields_for_js_grid(response["data"]["field_map"]);
+        this.addOperatorColumn(fields);
         for (var i = 0; i < fields.length; i++) {
             if (fields[i]["name"] == "name") {
                 fields[i]["cellRenderer"] = this.genGridNameRenderer();
             }
         }
-        fields.push({name: "Actions", type: "text", width: 25})
-        this.createActions(data)
+        this.addActionColumn(fields);
+        this.createActions(data);
         var _grid = $(`#${div}`).jsGrid({
             controller: {
                 loadData: async function (filter) {
@@ -617,7 +839,6 @@ class GridUI {
             },
             height: "500px",
             width: "100%",
-            deleteConfirm: "Delete",
             sorting: true,
             paging: false,
             filtering: true,
@@ -666,7 +887,7 @@ class GridUI {
                     s += `<tr><td>${map["display"]}:</td><td><input id='field_${field}' type='text' value="${value}"></input></td></tr>`
                     break;
                 case "textarea":
-//                    s += `<tr><td>${map["display"]}:</td><td><textarea id='field_${field}' type='textarea' rows="4" cols="50">${value}</textarea></td></tr>`
+                    //                    s += `<tr><td>${map["display"]}:</td><td><textarea id='field_${field}' type='textarea' rows="4" cols="50">${value}</textarea></td></tr>`
                     s += `<tr><td>${map["display"]}:</td><td><div id="toolbar-container"></div><div id='field_${field}' type='textarea' rows="4" cols="50">${value}</div></td></tr>`
                     text_fields.push(`field_${field}`);
                     break;
@@ -828,4 +1049,213 @@ class GridUI {
         })
     }
 
+}
+
+
+class GridUI {
+
+    constructor(div, map, data, dataObj, options) {
+        this.entityType = entityType;
+        this.entityTypePlural = entityTypePlural;
+        this.editors = {};
+        this.div_name = div;
+        this.fields = this.createFields(map)
+        this.map = map;
+        this.data = data;
+        this.dataObj = dataObj;
+    }
+
+    /*
+    map is a dictionary as follows of the following:
+    map = {
+        'field_namme':{
+        'display': Label
+        'field':field name,
+        'display_type':
+            one of 'text', 'date', hidden, callable
+        'width':width,
+        'required':True or False (in a form it is mandatory or not
+    }
+
+     */
+    createFields(map) {
+        var fields = [];
+        Object.keys(map).forEach(function (key) {
+            if (key == "id" || map[key]["display_type"] == "hidden") {
+            } else {
+                var f = {}
+                f["name"] = key;
+                f["type"] = "text"
+                f["title"] = map[key]["display"]
+                f["width"] = map[key]["width"]
+                fields.push(f)
+
+            }
+        })
+        return fields;
+    }
+
+    assignOperationFunctions(data) {
+
+    }
+
+    createOperations(data) {
+        /*
+        var self = this;
+        for (var i = 0; i < data.length; i++) {
+            var item = data[i];
+            var quarter_id = 1;
+            switch (entityType) {
+                case "teammember":
+                    data[i]["Ops"] =
+                        `<input class="jsgrid-button jsgrid-edit-button"  id="assign_${data[i]['id']}"  ` +
+                        `onclick=document.location="/project/person_assignments/${data[i]['id']}/${quarter_id}" ` +
+                        `"type="button" title="Assign"/>`;
+                    break;
+                case "project":
+                    data[i]["Ops"] =
+                        `<input class="jsgrid-button jsgrid-edit-button"  id="assign_${data[i]['id']}"  ` +
+                        `onclick=document.location="/project/project_assignments/${data[i]['id']}/${quarter_id}" ` +
+                        `"type="button" title="Assign"/>`;
+                    break;
+            }
+        }
+        */
+    }
+
+    createActions(data) {
+        /*
+        var self = this;
+        for (var i = 0; i < data.length; i++) {
+            var item = data[i]
+            data[i]["Actions"] = '<input class="jsgrid-button jsgrid-edit-button"  id="edit___id"  onclick="document.location=\'/' + "kg" + '/' + self.entityType.toLowerCase() + '/edit/__id\'") "type="button" title="Edit">'.replace(/__id/g, "" + item.entity_id, "g")
+                + '<input class="jsgrid-button jsgrid-delete-button"   id="del___id" onclick="document.location=\'/' + "kg" + '/' + self.entityType.toLowerCase() + '/delete/__id\'") "type="button" title="Delete">'.replace(/__id/g, "" + item.entity_id)
+            //+ '<input class="jsgrid-button jsgrid-view-button"   id="view___id" onclick="document.location=\'/'+"kg"+'kg/' + this.entityType.toLowerCase() + '/__id\'") "type="button" title="View">'.replace(/__id/g, ""+item.id);
+        }
+        */
+    }
+
+    addOperatorColumn(fields) {
+        //        fields.unshift({name: "Ops", type: "text", width: 25})
+
+    }
+
+    addActionColumn(fields) {
+        //       fields.push({name: "Actions", type: "text", width: 25})
+
+    }
+
+    show(div) {
+        var myself = this;
+        var data = this.data;
+        for (var i = 0; i < this.fields.length; i++) {
+            if (typeof this.fields[i].display == "function") {
+                fields[i]["cellRenderer"] = fields[i][display];
+            }
+        }
+        this.createOperations(this.data);
+        this.addOperatorColumn(this.fields);
+        this.addActionColumn(this.fields);
+        this.createActions(data);
+        var self = this;
+        var _grid = $(`#${div}`).jsGrid({
+            controller: {
+                loadData: async function (filter) {
+                    var self = this;
+                    var items = data
+                    try {
+                        var filteredItems = $.grep(items, function (item) {
+                            var match = true;
+                            for (var i = 0; i < fields.length; i++) {
+                                var field = fields[i].name;
+                                if (filter[field]) {
+                                    if (!item[field]) {
+                                        match = false;
+                                    } else if (item[field].toLowerCase().indexOf(filter[field].toLowerCase()) < 0) {
+                                        match = false;
+                                    }
+                                }
+                            }
+                            console.log("match=" + match);
+                            return match;
+                        })
+                    } catch (e) {
+                        console.log(e);
+                    }
+                    console.log(filteredItems);
+                    return filteredItems;
+                },
+                insertItem: $.noop,
+                updateItem: function (item) {
+                    console.log("Deleting " + item.Id);
+                    return (db.glycs.delete(item.Id))
+                },
+            },
+            onItemUpdating: function () {
+                console.log("Updating");
+            },
+            onRefreshed: function (grid) {
+                self.assignOperationFunctions(self.data);
+                var data = grid.grid.data;
+                for (var i = 0; i < data.length; i++) { // TODO only for currently displayed
+                    //_grid.setCallbackFunctions(data[i].id);
+                }
+            },
+            cellRenderer: function (value, item) {
+                return ("Hello")
+            },
+            height: "500px",
+            width: "100%",
+            sorting: true,
+            paging: false,
+            filtering: true,
+            data: this.data,
+            fields: this.fields
+        });
+        self.grid = _grid;
+        return _grid;
+    }
+
+
+}
+
+class ProjectAssignmentGridUI extends GridUI {
+    constructor(div, map, data, dataObj, options) {
+        super(div, map, data, dataObj, options);
+    }
+
+    addOperatorColumn(fields) {
+        fields.unshift({name: "Ops", type: "text", width: 25})
+
+    }
+
+    createOperations(data) {
+        var self = this;
+
+
+        for (var i = 0; i < data.length; i++) {
+            var item = data[i];
+            data[i]["Ops"] =
+                `<input class="jsgrid-button jsgrid-delete-button"  id="row_delete_${data[i]['id']}"  ` +
+                `"type="button" title="Delete"/>`;
+        }
+    }
+
+    assignOperationFunctions(data) {
+        var self = this;
+        var _data = data;
+
+        function deleteRowFunc(i) {
+            var rowNum = i;
+            return function () {
+                self.dataObj.deleteItem(_data[rowNum]);
+                self.grid.jsGrid("deleteItem", _data[rowNum]);
+            }
+        }
+
+        for (var i = 0; i < data.length; i++) {
+            $(`#row_delete_${data[i]['id']}`).on("click", deleteRowFunc(i));
+
+        }
+    }
 }

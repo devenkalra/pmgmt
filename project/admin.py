@@ -1,5 +1,4 @@
 from django.contrib import admin
-from import_export import resources
 from .models import Project, SubProject, Assignment, Quarter, FeatureDriver, Function, TeamMember, Stream, Okr
 
 #SubProject, Assignment, Quarter, FeatureDriver, Function, TeamMember)
@@ -12,9 +11,6 @@ class TeamMemberAdmin(admin.ModelAdmin):
     list_display = ['name',]
     display = ['name',]
 admin.site.register(TeamMember, TeamMemberAdmin)
-class TeamMemberResource(resources.ModelResource):
-    class Meta:
-        model=TeamMember
 
 class SubProjectAdmin(admin.ModelAdmin):
     list_display = ['name', ]

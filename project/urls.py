@@ -11,4 +11,5 @@ urlpatterns = [
     path('entity/list/<str:filter>', views.entity_index, name='relation_types_for_entity'),
     path('assignments', views.assignments, name='relation_types_for_entity'),
     path('person_assignments/<str:id>/<str:quarter>', views.person_assignments, name='relation_types_for_entity'),
+    path('project_assignments/<str:id>/<str:quarter>', views.project_assignments, name='relation_types_for_entity'),
 ]
