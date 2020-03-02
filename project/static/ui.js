@@ -399,13 +399,13 @@ class AnalysisUI {
                     document.location = `/project/analysis/${self.quarter_id}/${val}/0/0`;
                 }
             });
-            filterUi.setupSelect("subproject", "subproject_select", self.subprojects, "id", "name", self.subproject_id, {
+            filterUi.setupSelect("subproject", "subproject_select", self.subprojects, "subproject_id", "subproject", self.subproject_id, {
                 changeFunc: function () {
                     var val = $("#subproject_select").val();
                     document.location = `/project/analysis/${self.quarter_id}/${self.project_id}/${val}/0`;
                 }
             });
-            filterUi.setupSelect("stream", "stream_select", self.streams, "id", "name", self.quarter_id, {
+            filterUi.setupSelect("stream", "stream_select", self.streams, "stream_id", "stream", self.stream_id, {
                 changeFunc: function () {
                     var val = $("#stream_select").val();
                     document.location = `/project/analysis/${self.quarter_id}/${self.project_id}/${self.stream_id}/${val}`;
@@ -427,36 +427,55 @@ class AnalysisUI {
 
             var data = self.assignments;
 
-            var filter = {};
-            filter["entity_type"] = "subproject";
-            var val_array = [];
-            for (var i = 0; i < self.projects.length; i++) {
-                val_array.push(self.projects[i].id);
-            }
-            filter["project.id"] = val_array;
-            $.ajax({
-                url: `/project/api/entity/list/` + JSON.stringify(filter),
-                method: "GET"
-            }).then(function (response) {
-                self.subprojects = response["data"]["entities"];
-                responses.push(response);
+            if (self.project_id == 0) {
+                var sub_response = {}
+                sub_response.data = {};
+                sub_response.data.entities = [];
+                responses.push(sub_response);
+
+                self.subprojects = [];
+
+                var stream_response = {};
+                stream_response.data = {};
+                stream_response.data.entities = [];
+                responses.push(stream_response);
+                self.streams = [];
+                done_func(responses);
+            } else {
                 var filter = {};
-                filter["entity_type"] = "stream";
-                var val_array = [];
-                for (var i = 0; i < self.subprojects.length; i++) {
-                    val_array.push(self.subprojects[i].subproject_id);
-                }
-                filter["subproject.id"] = val_array;
-                responses.push(response);
+                filter["entity_type"] = "subproject";
+                filter["project.id"] = [self.project_id];
+                var val_array = [self.project_id];
                 $.ajax({
                     url: `/project/api/entity/list/` + JSON.stringify(filter),
                     method: "GET"
                 }).then(function (response) {
-                    self.streams = response["data"]["entities"];
-                    done_func(responses);
+                    self.subprojects = response["data"]["entities"];
+                    responses.push(response);
+                    if (self.subproject_id == 0) {
+                        self.streams = [];
+                        var stream_response = {};
+                        stream_response.data = {};
+                        stream_response.data.entities = [];
+                        responses.push(stream_response);
+                        self.streams = [];
+                        done_func(responses);
 
-                })
-            });
+                    } else {
+                        var filter = {};
+                        filter["entity_type"] = "stream";
+                        filter["subproject.id"] = [self.subproject_id];
+                        $.ajax({
+                            url: `/project/api/entity/list/` + JSON.stringify(filter),
+                            method: "GET"
+                        }).then(function (response) {
+                            self.streams = response["data"]["entities"];
+                            done_func(responses);
+
+                        })
+                    }
+                });
+            }
 
         }
 

@@ -9,8 +9,6 @@
     <div id="addrow"></div>
 
     <div id="assignments"></div>
-    <button id="button_save">Save</button>
-    <button id="button_cancel">Cancel</button>
 
     <script>
         var entityType = "{{ entityType }}";
@@ -25,10 +23,6 @@
             {"project_id": project_id, "subproject_id": subproject_id, "quarter_id": quarter_id, "stream_id": stream_id}
         );
         ui.show();
-        $("#button_cancel").on("click",
-            function () {
-                document.location = `/project/entity/list/{"entity_type":"teammember"}`;
-            });
     </script>
 
 {% endblock %}

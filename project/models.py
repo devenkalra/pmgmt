@@ -106,6 +106,9 @@ class SubProject(TimeStamped):
         'name': {'display': "First Name", 'field': 'name', 'display_type': 'text', 'width': 50},
     }
 
+    def admin_list_display(self):
+        return self.name
+
     def as_dict(self):
         return {
             "id": self.id,
@@ -115,11 +118,6 @@ class SubProject(TimeStamped):
     def __str__(self):
         return self.name + "(" + self.project.name + ")"
 
-    def as_dict(self):
-        return {
-            "id": self.id,
-            "name": self.name,
-        }
 
 
 class Stream(TimeStamped):
@@ -137,7 +135,7 @@ class Stream(TimeStamped):
         }
 
     def __str__(self):
-        return self.name + " - " + self.subproject.name + " - " + self.subproject.project.name
+        return self.subproject.project.name + " - " + self.subproject.name + " - " + self.name
 
 
 class Okr(TimeStamped):
