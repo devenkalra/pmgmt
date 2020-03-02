@@ -49,40 +49,68 @@ class TimeStamped(BaseModel):
 
 class Project(TimeStamped):
     name = models.CharField(max_length=100)
-    map={
+    map = {
         'id': {'display': "Id", 'field': 'id', 'display_type': 'hidden', 'width': 50},
         'name': {'display': "First Name", 'field': 'name', 'display_type': 'text', 'width': 50},
     }
+
     def as_dict(self):
         return {
-            "id":self.id,
-            "name":self.name,
+            "id": self.id,
+            "name": self.name,
         }
+
     def __str__(self):
         return self.name
+
     def as_detail(self, depth):
         id = self.id
         entity_list = SubProject.objects.filter(project=self)
         dict = []
         for entity in entity_list:
-            if(depth == 1):
+            if (depth == 1):
                 dict.append(entity.as_dict())
             else:
                 entity_dict = entity.as_dict()
-                entity_dict["children"] = entity.as_detail(depth-1)
-        return(dict)
+                entity_dict["children"] = entity.as_detail(depth - 1)
+        return (dict)
 
 
 class Function(TimeStamped):
     name = models.CharField(max_length=100)
-
     def __str__(self):
         return self.name
 
+    def as_dict(self):
+        return {
+            "id": self.id,
+            "name": self.name,
+        }
+
+class OrgRole(TimeStamped):
+    name = models.CharField(max_length=100)
+    def __str__(self):
+        return self.name
+
+    def as_dict(self):
+        return {
+            "id": self.id,
+            "name": self.name,
+        }
 
 class SubProject(TimeStamped):
     name = models.CharField(max_length=100)
     project = models.ForeignKey(Project, related_name='%(class)s_from', default=0, on_delete=models.SET_DEFAULT)
+    map = {
+        'id': {'display': "Id", 'field': 'id', 'display_type': 'hidden', 'width': 50},
+        'name': {'display': "First Name", 'field': 'name', 'display_type': 'text', 'width': 50},
+    }
+
+    def as_dict(self):
+        return {
+            "id": self.id,
+            "name": self.name,
+        }
 
     def __str__(self):
         return self.name + "(" + self.project.name + ")"
@@ -97,6 +125,11 @@ class SubProject(TimeStamped):
 class Stream(TimeStamped):
     name = models.CharField(max_length=100)
     subproject = models.ForeignKey(SubProject, related_name='%(class)s_from', default=0, on_delete=models.SET_DEFAULT)
+    map = {
+        'id': {'display': "Id", 'field': 'id', 'display_type': 'hidden', 'width': 50},
+        'name': {'display': "First Name", 'field': 'name', 'display_type': 'text', 'width': 50},
+    }
+
     def as_dict(self):
         return {
             "id": self.id,
@@ -104,18 +137,20 @@ class Stream(TimeStamped):
         }
 
     def __str__(self):
-        return self.name + " - " + self.subproject.name + " - " +  self.subproject.project.name
+        return self.name + " - " + self.subproject.name + " - " + self.subproject.project.name
 
 
 class Okr(TimeStamped):
     name = models.CharField(max_length=100)
     stream = models.ForeignKey(Stream, related_name='%(class)s_from', default=0, on_delete=models.SET_DEFAULT)
-    map={
+    map = {
         'id': {'display': "Id", 'field': 'id', 'display_type': 'hidden', 'width': 50},
         'name': {'display': "First Name", 'field': 'name', 'display_type': 'text', 'width': 50},
     }
+
     def __str__(self):
         return self.name
+
     def as_dict(self):
         return {
             "id": self.id,
@@ -125,77 +160,87 @@ class Okr(TimeStamped):
 
 class FeatureDriver(TimeStamped):
     name = models.CharField(max_length=100)
+
     def __str__(self):
         return self.name
+
     def as_dict(self):
         return {
-            "id":self.id,
-            "name":self.name
+            "id": self.id,
+            "name": self.name
         }
-    map={
+
+    map = {
         'id': {'display': "Id", 'field': 'id', 'display_type': 'hidden', 'width': 50},
         'name': {'display': "First Name", 'field': 'name', 'display_type': 'text', 'width': 50},
     }
+
 
 class TeamMember(TimeStamped):
     name = models.CharField(max_length=100)
     ldap = models.CharField(max_length=100)
     location = models.CharField(max_length=10)
     manager = models.CharField(max_length=100)
-    map={
+    function = models.ForeignKey(Function, related_name='%(class)s_from', default=0, on_delete=models.SET_DEFAULT)
+    role = models.ForeignKey(OrgRole, related_name='%(class)s_from', default=0, on_delete=models.SET_DEFAULT)
+    status = models.CharField(max_length=20, default="Active", null=True);
+    map = {
         'id': {'display': "Id", 'field': 'id', 'display_type': 'hidden', 'width': 50},
         'name': {'display': "First Name", 'field': 'name', 'display_type': 'text', 'width': 50},
         'ldap': {'display': "LDAP", 'field': 'ldap', 'display_type': 'text', 'width': 50},
         'location': {'display': "Location", 'field': 'location', 'display_type': 'text', 'width': 50},
         'manager': {'display': "Manager", 'field': 'manager', 'display_type': 'text', 'width': 50},
     }
+
     def as_dict(self):
         return {
-            "id":self.id,
-            "name":self.name,
-            "ldap":self.ldap,
-            "location":self.location,
-            "manager":self.manager
+            "id": self.id,
+            "name": self.name,
+            "ldap": self.ldap,
+            "location": self.location,
+            "manager": self.manager
         }
-
 
     def __str__(self):
         return self.name
-
 
 
 class Quarter(TimeStamped):
     name = models.CharField(max_length=100)
+
     def __str__(self):
         return self.name
+
     def as_dict(self):
         return {
-            "id":self.id,
-            "name":self.name
+            "id": self.id,
+            "name": self.name
         }
-    map={
+
+    map = {
         'id': {'display': "Id", 'field': 'id', 'display_type': 'hidden', 'width': 50},
         'name': {'display': "First Name", 'field': 'name', 'display_type': 'text', 'width': 50},
     }
+
 
 class Assignment(TimeStamped):
     okr = models.ForeignKey(Okr, related_name='%(class)s_from', default=0, on_delete=models.SET_DEFAULT)
     quarter = models.ForeignKey(Quarter, related_name='%(class)s_from', default=0, on_delete=models.SET_DEFAULT)
     assignment = models.DecimalField(max_digits=5, decimal_places=2)
     teammember = models.ForeignKey(TeamMember, related_name='%(class)s_from', default=0, on_delete=models.SET_DEFAULT)
-    map={
+    map = {
         'id': {'display': "Id", 'field': 'id', 'display_type': 'hidden', 'width': 50},
         'quarter': {'display': "Quarter", 'field': 'quarter', 'display_type': 'text', 'width': 50},
         'okr': {'display': "OKR", 'field': 'okr', 'display_type': 'text', 'width': 50},
         'teammember': {'display': "Member", 'field': 'teammember', 'display_type': 'text', 'width': 50},
         'assignment': {'display': "Assignment", 'field': 'assignment', 'display_type': 'text', 'width': 50},
     }
+
     def as_dict(self):
         return {
-            "id":self.id,
-            "quarter":self.quarter.name,
-            "okr":self.okr.name,
-            "teammember":self.teammember.name,
-            "assignment":str(self.assignment),
+            "id": self.id,
+            "quarter": self.quarter.name,
+            "okr": self.okr.name,
+            "teammember": self.teammember.name,
+            "assignment": str(self.assignment),
         }
-
