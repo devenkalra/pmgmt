@@ -135,7 +135,9 @@ class Stream(TimeStamped):
         }
 
     def __str__(self):
-        return self.subproject.project.name + " - " + self.subproject.name + " - " + self.name
+        return ("(%d)"%(self.subproject.project.id) + self.subproject.project.name + " - "
+               + "(%d)" % (self.subproject.id) + self.subproject.name + " - " +
+               "(%d)" % (self.id) + self.name)
 
 
 class Okr(TimeStamped):

@@ -1,4 +1,4 @@
-#!/Users/devenk/GoogleDriveDevenKalraCom/pmgmt/venv/bin/python
+#!/Users/devenk/PycharmProjects/pmgmt/venv/bin/python
 from django.core import management
 
 if __name__ == "__main__":

@@ -110,7 +110,7 @@ def json_assignment_rollup(request, crit):
     for field in fields:
         sql += separator + "%s.name as %s, %s.id as %s_id"% (field, field, field, field)
         separator = ", "
-    sql += ", sum(a.assignment) as total "
+    sql += ", round(sum(a.assignment), 2) as total "
     sql += "from project_project as project, project_subproject as subproject, project_okr as okr, project_assignment as a, "
     sql += "project_stream as stream "
     sql += "where project.id = subproject.project_id and a.okr_id = okr.id and okr.stream_id = stream.id and stream.subproject_id = subproject.id "

@@ -140,8 +140,32 @@ class EntityData {
     }
 }
 
-class AnalysisUI {
+class BaseUI {
     constructor(divnames, ids) {
+
+    }
+
+    filterFunc(item, filter) {
+        var match = true;
+        var keys = Object.keys(filter);
+        for (var i = 0; i < keys.length; i++) {
+            var field = keys[i];
+            if (filter[field]) {
+                if (!item[field]) {
+                    match = false;
+                } else if (item[field].toLowerCase().indexOf(filter[field].toLowerCase()) < 0) {
+                    match = false;
+                }
+            }
+        }
+        console.log("match=" + match);
+        return match;
+    }
+}
+
+class AnalysisUI extends BaseUI {
+    constructor(divnames, ids) {
+        super(divnames, ids);
         this.divnames = divnames;
         this.project_id = ids.project_id;
         this.quarter_id = ids.quarter_id;
@@ -285,7 +309,14 @@ class AnalysisUI {
 
 
                 }
+
                 */
+        Number.prototype.toFixedDown = function (digits) {
+            var re = new RegExp("(\\d+\\.\\d{" + digits + "})(\\d)"),
+                m = this.toString().match(re);
+            return m ? parseFloat(m[1]) : this.valueOf();
+        };
+
         function createDataTree(node, data, start, end, level) {
             var first = data;
             var keys = Object.keys(self.gridMap);
@@ -322,7 +353,7 @@ class AnalysisUI {
                 node.children.push(childNode);
                 createDataTree(childNode, data, localStart, end, level + 1);
             }
-            node["total"] = total;
+            node["total"] = total.toFixedDown(2);
             return node;
         }
 
@@ -582,8 +613,9 @@ class FilterUI {
 }
 
 
-class ProjectAssignmentUI {
+class ProjectAssignmentUI extends BaseUI {
     constructor(divnames, ids) {
+        super(divnames, ids);
         this.divnames = divnames;
         this.project_id = ids.project_id;
         this.quarter_id = ids.quarter_id;
@@ -597,6 +629,41 @@ class ProjectAssignmentUI {
         this.cache["projects"] = {}
         this.cache["subprojects"] = {}
         this.cache["streams"] = {}
+    }
+
+    filterFunc(item, filter) {
+        var match = true;
+        var keys = Object.keys(filter);
+        for (var i = 0; i < keys.length; i++) {
+            var field = keys[i];
+            if (field == "Ops") {
+                continue;
+            }
+            if (filter[field]) {
+                var field_item;
+                var type = "string";
+                if (field == "okr") {
+                    field_item = item.project + "-" + item.subproject + "-" + item.stream;
+                } else if (field == "teammember") {
+                    field_item = item.teammember;
+                } else if (field == "assignment") {
+                    type = "number";
+                    field_item = item[field];
+                }
+                if (type == "string") {
+                    if (field_item.toLowerCase().indexOf(filter[field].toLowerCase()) < 0) {
+                        match = false;
+                    }
+                } else if (type == "number") {
+                    if (field_item != parseFloat(filter[field])) {
+                        match = false;
+                    }
+                }
+            }
+            console.log("match=" + match);
+        }
+        return match;
+
     }
 
     deleteItem(item) {
@@ -830,15 +897,25 @@ class ProjectAssignmentUI {
 
             }
 
+            function filterOkr(a, b, c) {
+                return ("Hello");
+            }
+
             map["teammember"] = {width: 100, display: "Person", "type": teammemberFunction}
-            map["okr"] = {width: 200, display: "OKR", "type": okrFunction}
-            map["assignment"] = {width: 200, display: "Assignment", "type": assignmentFunction}
+            map["composed_okr"] = {
+                width: 200, display: "OKR", "type": okrFunction
+            }
+            map["assignment"] = {width: 50, display: "Assignment", "type": assignmentFunction}
             self.gridMap = map;
         }
 
 
         function createGridData() {
             self.data = self.assignments;
+            var data = self.data;
+            for (var i = 0; i < data.length; i++) {
+                data[i]["composed_okr"] = data[i]["subproject"] + "-" + data[i]["stream"] + "-" + data[i]["okr"];
+            }
         }
 
         function done_func(responses) {
@@ -1412,68 +1489,76 @@ class GridUIX {
                 fields[i]["cellRenderer"] = this.genGridNameRenderer();
             }
         }
+
+
         this.addActionColumn(fields);
+
         this.createActions(data);
-        var sorting = true;
-        var heading = true;
-        var _grid = $(`#${div}`).jsGrid({
-            controller: {
-                loadData: async function (filter) {
-                    var self = this;
-                    var items = data
-                    try {
-                        var filteredItems = $.grep(items, function (item) {
-                            var match = true;
-                            for (var i = 0; i < fields.length; i++) {
-                                var field = fields[i].name;
-                                if (filter[field]) {
-                                    if (!item[field]) {
-                                        match = false;
-                                    } else if (item[field].toLowerCase().indexOf(filter[field].toLowerCase()) < 0) {
-                                        match = false;
+
+        var
+            sorting = true;
+        var
+            heading = true;
+        var
+            _grid = $(`#${div}`).jsGrid({
+                controller: {
+                    loadData: async function (filter) {
+                        var self = this;
+                        var items = data
+                        try {
+                            var filteredItems = $.grep(items, function (item) {
+                                var match = true;
+                                for (var i = 0; i < fields.length; i++) {
+                                    var field = fields[i].name;
+                                    if (filter[field]) {
+                                        if (!item[field]) {
+                                            match = false;
+                                        } else if (item[field].toLowerCase().indexOf(filter[field].toLowerCase()) < 0) {
+                                            match = false;
+                                        }
                                     }
                                 }
-                            }
-                            console.log("match=" + match);
-                            return match;
-                        })
-                    } catch (e) {
-                        console.log(e);
+                                console.log("match=" + match);
+                                return match;
+                            })
+                        } catch (e) {
+                            console.log(e);
+                        }
+                        console.log(filteredItems);
+                        //createActions(filteredItems);
+                        return filteredItems;
+                    },
+                    insertItem: $.noop,
+                    updateItem: function (item) {
+                        console.log("Updating " + item.Id);
+                    },
+                    deleteItem: function (item) {
+                        console.log("Deleting " + item.Id);
                     }
-                    console.log(filteredItems);
-                    //createActions(filteredItems);
-                    return filteredItems;
                 },
-                insertItem: $.noop,
-                updateItem: function (item) {
-                    console.log("Updating " + item.Id);
+                onItemUpdating: function () {
+                    console.log("Updating");
                 },
-                deleteItem: function (item) {
-                    console.log("Deleting " + item.Id);
-                }
-            },
-            onItemUpdating: function () {
-                console.log("Updating");
-            },
-            onRefreshed: function (grid) {
-                var data = grid.grid.data;
-                for (var i = 0; i < data.length; i++) { // TODO only for currently displayed
-                    //_grid.setCallbackFunctions(data[i].id);
-                }
-            },
-            cellRenderer: function (value, item) {
-                return ("Hello")
-            },
-            height: "500px",
-            width: "100%",
-            sorting: true,
-            paging: false,
+                onRefreshed: function (grid) {
+                    var data = grid.grid.data;
+                    for (var i = 0; i < data.length; i++) { // TODO only for currently displayed
+                        //_grid.setCallbackFunctions(data[i].id);
+                    }
+                },
+                cellRenderer: function (value, item) {
+                    return ("Hello")
+                },
+                height: "500px",
+                width: "100%",
+                sorting: true,
+                paging: false,
 
-            filtering: true,
-            data: data,
-            fields: fields
-        });
-        return _grid;
+                filtering: true,
+                data: data,
+                fields: fields
+            });
+        return
+        _grid;
     }
 
 
@@ -1737,7 +1822,6 @@ class GridUI {
                 f["title"] = map[key]["display"]
                 f["width"] = map[key]["width"]
                 fields.push(f)
-
             }
         })
         return fields;
@@ -1771,9 +1855,16 @@ class GridUI {
     show(div) {
         var myself = this;
         var data = this.data;
+        var fields = this.fields;
         for (var i = 0; i < this.fields.length; i++) {
             if (typeof this.dataObj.gridMap[this.fields[i].name].type == "function") {
                 this.fields[i]["cellRenderer"] = this.dataObj.gridMap[this.fields[i].name].type;
+            }
+            if (this.dataObj.gridMap[this.fields[i].name].sorter) {
+                this.fields[i]["sorter"] = this.dataObj.gridMap[this.fields[i].name].sorter;
+            }
+            if (this.dataObj.gridMap[this.fields[i].name]["filterValue"]) {
+                this.fields[i]["filterValue"] = this.dataObj.gridMap[this.fields[i].name]["filterValue"];
             }
         }
         var self = this;
@@ -1786,33 +1877,27 @@ class GridUI {
         this.addActionColumn(this.fields);
         this.createActions(data);
 
+        function loadDataFunctionGen() {
+            var items = self.data;
+            return function (filter) {
+                function filterFunc(item) {
+                    return self.dataObj.filterFunc(item, filter);
+                }
+
+                try {
+                    return $.grep(items, filterFunc);
+                } catch (e) {
+                    console.log(e);
+                }
+                return [];
+            }
+        }
+
+
+        var loadDataFunction = loadDataFunctionGen();
         var _grid = $(`#${div}`).jsGrid({
             controller: {
-                loadData: async function (filter) {
-                    var self = this;
-                    var items = data
-                    try {
-                        var filteredItems = $.grep(items, function (item) {
-                            var match = true;
-                            for (var i = 0; i < fields.length; i++) {
-                                var field = fields[i].name;
-                                if (filter[field]) {
-                                    if (!item[field]) {
-                                        match = false;
-                                    } else if (item[field].toLowerCase().indexOf(filter[field].toLowerCase()) < 0) {
-                                        match = false;
-                                    }
-                                }
-                            }
-                            console.log("match=" + match);
-                            return match;
-                        })
-                    } catch (e) {
-                        console.log(e);
-                    }
-                    console.log(filteredItems);
-                    return filteredItems;
-                },
+                loadData: loadDataFunction,
                 insertItem: $.noop,
                 updateItem: function (item) {
                     console.log("Deleting " + item.Id);
@@ -1839,7 +1924,9 @@ class GridUI {
             filtering: this.filtering,
             heading: this.heading,
             data: this.data,
-            fields: this.fields
+            fields: this.fields,
+            loadIndication: true,
+            loadIndicationDelay:0,
         });
         self.grid = _grid;
         return _grid;
@@ -1876,6 +1963,7 @@ class PositionedDiv {
         $("#" + this.name).html(html);
     }
 }
+
 
 class AnalysisDivUI {
     constructor(div, data, dataObj, options) {
