@@ -1,26 +1,28 @@
-{% extends 'base.html' %}
+{% extends 'boot.html' %}
 
 {% block content %}
 
     <div id="project_name"></div>
     <div id="filter_div"></div>
 
+    <div style="text-align:center"><button id="apply_filter" type="button" class="btn btn-primary">Apply Filter</button></div>
 
     <div id="addrow"></div>
 
-    <div id="assignments"></div>
+    <div id="assignments" style="padding:20px"></div>
 
     <script>
         var entityType = "{{ entityType }}";
         var entityTypePlural = "{{ entityTypePlural }}";
-        var stream_id = {{ stream_id }};
-        var quarter_id = {{ quarter_id }};
-        var subproject_id = {{ subproject_id }};
-        var project_id = {{ project_id }};
+        var urlFilterStr = " {{filter }}";
+        urlFilterStr = urlFilterStr.replace(/&quot;/g, '"');
+        var urlFilter = JSON.parse(urlFilterStr)
+
+
 
         var ui = new AnalysisUI(
             {"name": "project_name", "assignments": "assignments", "addrow": "addrow", "filter":"filter_div"},
-            {"project_id": project_id, "subproject_id": subproject_id, "quarter_id": quarter_id, "stream_id": stream_id}
+            urlFilter
         );
         ui.show();
     </script>

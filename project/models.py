@@ -78,6 +78,10 @@ class Project(TimeStamped):
 
 class Function(TimeStamped):
     name = models.CharField(max_length=100)
+    map = {
+        'id': {'display': "Id", 'field': 'id', 'display_type': 'hidden', 'width': 50},
+        'name': {'display': "First Name", 'field': 'name', 'display_type': 'text', 'width': 50},
+    }
     def __str__(self):
         return self.name
 

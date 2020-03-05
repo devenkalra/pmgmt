@@ -1,34 +1,30 @@
-{% extends 'base.html' %}
+{% extends 'boot.html' %}
 
 {% block content %}
 
     <div id="project_name"></div>
     <div id="filter_div"></div>
+    <div style="text-align:center"><button id="apply_filter" type="button" class="btn btn-primary">Apply Filter</button></div>
 
 
     <div id="addrow"></div>
 
-    <div id="assignments"></div>
-    <button id="button_save">Save</button>
-    <button id="button_cancel">Cancel</button>
+    <div id="assignments" style="width:90%; margin:20px"></div>
+
 
     <script>
         var entityType = "{{ entityType }}";
         var entityTypePlural = "{{ entityTypePlural }}";
-        var stream_id = {{ stream_id }};
-        var quarter_id = {{ quarter_id }};
-        var subproject_id = {{ subproject_id }};
-        var project_id = {{ project_id }};
+        var urlFilterStr = " {{ filter }}";
+        urlFilterStr = urlFilterStr.replace(/&quot;/g, '"');
+        var urlFilter = JSON.parse(urlFilterStr)
+
 
         var ui = new ProjectAssignmentUI(
-            {"name": "project_name", "assignments": "assignments", "addrow": "addrow", "filter":"filter_div"},
-            {"project_id": project_id, "subproject_id": subproject_id, "quarter_id": quarter_id, "stream_id": stream_id}
-        );
+            {"name": "project_name", "assignments": "assignments", "addrow": "addrow", "filter":"filter_div"}, urlFilter)
+
         ui.show();
-        $("#button_cancel").on("click",
-            function () {
-                document.location = `/project/entity/list/{"entity_type":"teammember"}`;
-            });
+
     </script>
 
 {% endblock %}

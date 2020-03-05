@@ -1,17 +1,47 @@
 class Utils {
 
 
+    static updateSelect(name, data, id_field, value_field, selected_id, options) {
+        var $el = $(`#${name}`);
+        $el.empty();
+
+        var skip_blank = false;
+        if (options && options.skip_blank) {
+            skip_blank = options.skip_blank;
+        }
+        var width = "100%";
+        if (options && options.width) {
+            width = options.width;
+        }
+        var str = "";
+        if (!skip_blank) {
+            $el.append($("<option></option>")
+                .attr("value", 0).text(""));
+        }
+
+        for (var j = 0; j < data.length; j++) {
+            var selected = "";
+            if (data[j][id_field] == selected_id) {
+                selected = "selected";
+            }
+            $el.append($(`<option ${selected}></option>`)
+                .attr("value", data[j][id_field]).text(data[j][value_field]))
+
+        }
+    }
+
     static createSelect(name, data, id_field, value_field, selected_id, options) {
         var skip_blank = false;
         if (options && options.skip_blank) {
             skip_blank = options.skip_blank;
         }
-        var width = "50px";
+        var width = "100%";
         if (options && options.width) {
             width = options.width;
         }
+
         var str = "";
-        str += `<select class="js-example-basic-single" style="width:${width}" name="${name}" id="${name}">`;
+        str += `<select class="js-example-basic-single" style="display: inline-block; width:${width}" name="${name}" id="${name}">`;
         if (!skip_blank) {
             str += `<option value="0"></option>`
         }
@@ -56,6 +86,15 @@ class Utils {
         // these HTTP methods do not require CSRF protection
         return (/^(GET|HEAD|OPTIONS|TRACE)$/.test(method));
     }
+
+    static getFieldArrayFromDictArray(dict_array, field) {
+        var ret_array = [];
+        for (var i = 0; i < dict_array.length; i++) {
+            ret_array.push(dict_array[i][field])
+        }
+        return ret_array;
+    }
+
 
     static searchInDictArray(dict_array, field, value) {
         if (field.constructor == Object) {
@@ -164,13 +203,11 @@ class BaseUI {
 }
 
 class AnalysisUI extends BaseUI {
-    constructor(divnames, ids) {
-        super(divnames, ids);
+    constructor(divnames, filter) {
+        super(divnames, filter);
         this.divnames = divnames;
-        this.project_id = ids.project_id;
-        this.quarter_id = ids.quarter_id;
-        this.subproject_id = ids.subproject_id;
-        this.stream_id = ids.stream_id;
+        this.filter = filter;
+
 
         this.person_assignments = [];
         this.grid = null;
@@ -388,9 +425,13 @@ class AnalysisUI extends BaseUI {
         function createGridData(level) {
             var root = {};
             root["name"] = "__TOP__";
-            createDataTree(root, self.totals, 0, self.totals.length - 1, 0);
             self.root = root;
             self.data = [];
+            if (self.totals.length == 0) {
+                return;
+
+            }
+            createDataTree(root, self.totals, 0, self.totals.length - 1, 0);
             fillDataFromTree(root, level, 0);
 
         }
@@ -418,32 +459,38 @@ class AnalysisUI extends BaseUI {
             */
 
             var filterUi = new FilterUI(self.divnames["filter"]);
-            filterUi.setupSelect("quarter", "quarter_select", self.quarters, "id", "name", self.quarter_id, {
-                changeFunc: function () {
+            var filterChangeFunction = function () {
+                var _filterUi = filterUi;
+                return function () {
                     var val = $("#quarter_select").val();
-                    document.location = `/project/analysis/${val}/${self.project_id}/${self.subproject_id}/${self.stream_id}`;
+                    var filter = _filterUi.getFilter();
+                    document.location = `/project/analysis/{"filter":` + JSON.stringify(filter) + "}";
                 }
+            }()
+            filterUi.setupSelect("quarter", "quarter_select", self.quarters, "id", "name", self.filter["assignment.quarter_id"], {
+                width: "100%"
             });
-            filterUi.setupSelect("project", "project_select", self.projects, "id", "name", self.project_id, {
-                changeFunc: function () {
-                    var val = $("#project_select").val();
-                    document.location = `/project/analysis/${self.quarter_id}/${val}/0/0`;
+            filterUi.setupSelect("project", "project_select", self.projects, "id", "name", self.filter["project.id"], {});
+            filterUi.setupSelect("subproject", "subproject_select", self.subprojects, "subproject_id", "subproject", self.filter["subproject.id"], {});
+            filterUi.setupSelect("stream", "stream_select", self.streams, "stream_id", "stream", self.filter["stream.id"], {});
+            filterUi.setupSelect("function", "function_select", self.functions, "id", "name", self.filter["function.id"], {
+                    "width": "100%"
                 }
-            });
-            filterUi.setupSelect("subproject", "subproject_select", self.subprojects, "subproject_id", "subproject", self.subproject_id, {
-                changeFunc: function () {
-                    var val = $("#subproject_select").val();
-                    document.location = `/project/analysis/${self.quarter_id}/${self.project_id}/${val}/0`;
-                }
-            });
-            filterUi.setupSelect("stream", "stream_select", self.streams, "stream_id", "stream", self.stream_id, {
-                changeFunc: function () {
-                    var val = $("#stream_select").val();
-                    document.location = `/project/analysis/${self.quarter_id}/${self.project_id}/${self.stream_id}/${val}`;
-                }
-            });
+            )
+            filterUi.setupTextFields([
+                {"name": "manager_input", "value": self.filter["teammember.manager"]},
+                {"name": "ldap_input", "value": self.filter["teammember.ldap"]},
+                {"name": "location_input", "value": self.filter["teammember.location"]},
+            ])
             createGridMap(3)
             createGridData(3);
+            $("#apply_filter").on("click", filterChangeFunction);
+
+            $("#project_select").on("change", FilterUI.getProjectChangeFunction(filterUi));
+            $("#subproject_select").on("change", FilterUI.getSubProjectChangeFunction(filterUi));
+            if (self.data.length == 0) {
+                return;
+            }
             var analysisDivUi = new AnalysisDivUI(self.divnames["assignments"], self.data, self);
         }
 
@@ -458,80 +505,71 @@ class AnalysisUI extends BaseUI {
 
             var data = self.assignments;
 
-            if (self.project_id == 0) {
-                var sub_response = {}
-                sub_response.data = {};
-                sub_response.data.entities = [];
-                responses.push(sub_response);
+            var filter = {};
+            filter["entity_type"] = "function";
+            return ($.ajax({
+                url: `/project/api/entity/list/` + JSON.stringify(filter),
+                method: "GET"
+            })).then(function (response) {
+                self.functions = response["data"]["entities"];
 
-                self.subprojects = [];
+                if (!self.filter["project.id"] || self.filter["project.id"].length == 0) {
+                    var sub_response = {}
+                    sub_response.data = {};
+                    sub_response.data.entities = [];
+                    responses.push(sub_response);
 
-                var stream_response = {};
-                stream_response.data = {};
-                stream_response.data.entities = [];
-                responses.push(stream_response);
-                self.streams = [];
-                done_func(responses);
-            } else {
-                var filter = {};
-                filter["entity_type"] = "subproject";
-                filter["project.id"] = [self.project_id];
-                var val_array = [self.project_id];
-                $.ajax({
-                    url: `/project/api/entity/list/` + JSON.stringify(filter),
-                    method: "GET"
-                }).then(function (response) {
-                    self.subprojects = response["data"]["entities"];
-                    responses.push(response);
-                    if (self.subproject_id == 0) {
-                        self.streams = [];
-                        var stream_response = {};
-                        stream_response.data = {};
-                        stream_response.data.entities = [];
-                        responses.push(stream_response);
-                        self.streams = [];
-                        done_func(responses);
+                    self.subprojects = [];
 
-                    } else {
-                        var filter = {};
-                        filter["entity_type"] = "stream";
-                        filter["subproject.id"] = [self.subproject_id];
-                        $.ajax({
-                            url: `/project/api/entity/list/` + JSON.stringify(filter),
-                            method: "GET"
-                        }).then(function (response) {
-                            self.streams = response["data"]["entities"];
+                    var stream_response = {};
+                    stream_response.data = {};
+                    stream_response.data.entities = [];
+                    responses.push(stream_response);
+                    self.streams = [];
+                    done_func(responses);
+                } else {
+                    var filter = {};
+                    filter["entity_type"] = "subproject";
+                    filter["project.id"] = self.filter["project.id"];
+                    var val_array = [self.filter["project.id"]];
+                    $.ajax({
+                        url: `/project/api/entity/list/` + JSON.stringify(filter),
+                        method: "GET"
+                    }).then(function (response) {
+                        self.subprojects = response["data"]["entities"];
+                        responses.push(response);
+                        if (!self.filter["subproject.id"] || self.filter["subproject.id"].length == 0) {
+                            self.streams = [];
+                            var stream_response = {};
+                            stream_response.data = {};
+                            stream_response.data.entities = [];
+                            responses.push(stream_response);
+                            self.streams = [];
                             done_func(responses);
 
-                        })
-                    }
-                });
-            }
+                        } else {
+                            var filter = {};
+                            filter["entity_type"] = "stream";
+                            filter["subproject.id"] = self.filter["subproject.id"];
+
+                            $.ajax({
+                                url: `/project/api/entity/list/` + JSON.stringify(filter),
+                                method: "GET"
+                            }).then(function (response) {
+                                self.streams = response["data"]["entities"];
+                                done_func(responses);
+
+                            })
+                        }
+                    });
+                }
+            })
 
         }
 
-        var filter = {}
+        var filter = self.filter;
         var promises = []
 
-        if (self.quarter_id
-        ) {
-            filter
-                ["quarter_id"] = [self.quarter_id];
-        }
-
-        if (self.project_id) {
-            filter["project.id"] = [self.project_id];
-        }
-
-        if (self.subproject_id) {
-            filter["subproject.id"] = [self.subproject_id];
-        }
-        if (self.stream_id) {
-            filter["stream.id"] = [self.stream_id];
-        }
-        if (self.okr_id) {
-            filter["okr.id"] = [self.okr_id];
-        }
 
         promises.push(function () {
             var _filter = filter;
@@ -575,60 +613,282 @@ class AnalysisUI extends BaseUI {
 
 // http://localhost:8000/project/api/assignment/summary/%7B%22filter%22:%7B%22teammember.id%22:[2]%7D%7D
     }
+
+}
+
+class Data {
+    static getSubProjectsForProject(project_ids, callback) {
+        $.ajax({
+            url: `/project/api/entity/list/` +
+                `{"entity_type":"subproject", "project.id":` + JSON.stringify(project_ids) + `}`,
+            method: "GET"
+        }).then(function (response) {
+            callback(response);
+        });
+    }
+
+    static getStreamsForSubProject(subproject_ids, callback) {
+        $.ajax({
+            url: `/project/api/entity/list/` +
+                `{"entity_type":"stream", "subproject.id":` + JSON.stringify(subproject_ids) + `}`,
+            method: "GET"
+        }).then(function (response) {
+            callback(response);
+        })
+    }
 }
 
 class FilterUI {
+    static getProjectChangeFunction(filterObj) {
+        var self = filterObj;
+        return (function () {
+            var project_ids = [];
+            $("#project_select option:selected").each(function () {
+                project_ids.push($(this).val());
+            });
+            Data.getSubProjectsForProject(project_ids, function (response) {
+                var subprojects = response["data"]["entities"];
+                Utils.updateSelect("subproject_select", subprojects, "subproject_id", "subproject", 0);
+                Utils.updateSelect("stream_select", [], "id", "name", 0);
+            })
+        })
+    }
+
+    static getSubProjectChangeFunction(filterObj) {
+        var self = filterObj;
+        return (function () {
+            var subproject_ids = [];
+            $("#subproject_select option:selected").each(function () {
+                subproject_ids.push($(this).val());
+            });
+            Data.getStreamsForSubProject(subproject_ids, function (response) {
+                var streams = response["data"]["entities"];
+                Utils.updateSelect("stream_select", streams, "stream_id", "stream", 0);
+            })
+        })
+    }
+
+
     constructor(divName, options) {
         this.divName = divName;
         $(`#${this.divName}`).html(this.createDivBodyHtml(options))
+        // Setup Defaults
+        this.setupSelect("quarter", "quarter_select", [], "id", "name", 0, {"width": "100%"})
+        this.setupSelect("project", "project_select", [], "id", "name", 0, {"width": "100%"})
+        this.setupSelect("subproject", "subproject_select", [], "id", "name", 0, {"width": "100%"})
+        this.setupSelect("stream", "stream_select", [], "id", "name", 0, {"width": "100%"})
+        this.setupSelect("function", "function_select", [], "id", "name", 0, {"width": "100%"})
+
+
+    }
+
+    updateFilterData(startWith) { // project, subproject and stream
+        // Check project, subproject and stream and update accordingly
+        if (startWith == "project") {
+        }
     }
 
     setupSelect(entity, name, data, id_field, value_field, selected_id, options) {
         var str = Utils.createSelect(name, data, id_field, value_field, selected_id, options);
         $(`#${entity}_select_div`).html(str);
-        $(`#${entity}_select`).on("change", options.changeFunc)
     }
 
+    setupTextFields(vals) {
+        for (var i = 0; i < vals.length; i++) {
+            if (vals[i].value) {
+                $(`#${vals[i].name}`).val(vals[i].value);
+            }
+        }
+    }
+
+
+    getFilter() {
+        function isDefined(x) {
+            if (typeof x != "undefined") {
+                return true;
+            } else {
+                return false;
+            }
+        }
+
+        var filter = {};
+        if (isDefined($("#quarter_select").val()) && $("#quarter_select").val() != 0 && $("#quarter_select").val() != "0") {
+            filter["assignment.quarter_id"] = [$("#quarter_select").val()];
+        }
+        if (isDefined($("#project_select").val()) && $("#project_select").val() != 0 && $("#project_select").val() != "0") {
+            filter["project.id"] = [$("#project_select").val()];
+        }
+        if (isDefined($("#subproject_select").val()) && $("#subproject_select").val() != 0 && $("#subproject_select").val() != "0") {
+            filter["subproject.id"] = [$("#subproject_select").val()];
+        }
+        if (isDefined($("#stream_select").val()) && $("#stream_select").val() != 0 && $("#stream_select").val() != "0") {
+            filter["stream.id"] = [$("#stream_select").val()];
+        }
+        if (isDefined($("#function_select").val()) && $("#function_select").val() != 0 && $("#function_select").val() != "0") {
+            filter["function.id"] = [$("#function_select").val()];
+        }
+        if ($("#manager_input").val() != "") {
+            filter["teammember.manager"] = [$("#manager_input").val()];
+        }
+        if ($("#ldap_input").val() != "") {
+            filter["teammember.ldap"] = [$("#ldap_input").val()];
+        }
+        if ($("#location_input").val() != "") {
+            filter["teammember.location"] = [$("#location_input").val()];
+        }
+
+
+        return filter;
+    }
 
     createDivBodyHtml(options) {
         var s = "";
         s += `
-        <table>
-            <tr>
-                <td style="width:25%">Quarter</td>
-                <td style="width:25%">Project</td>
-                <td style="width:25%">Subproject</td>
-                <td style="width:25%">Stream</td>
-            </tr>
-            <tr>
-                <td>    <div style="width:25%" id="quarter_select_div"></div></td>
-                <td>    <div style="width:25%" id="project_select_div"></div></td>
-                <td>    <div style="width:25%" id="subproject_select_div"></div></td>
-                <td>    <div style="width:25%" id="stream_select_div"></div></td>
-            </tr>
-        </table>`;
+            <div class="container">
+              <div class="row">
+                <div class="col-sm">
+                   <div>Quarter</div>
+                   <div id="quarter_select_div"></div>
+                </div>
+                <div class="col-sm">
+                   <div>Project</div>
+                   <div  id="project_select_div"></div>
+                </div>
+                <div class="col-sm">
+                   <div>Subproject</div>
+                   <div  id="subproject_select_div"></div>
+                </div>
+                <div class="col-sm">
+                   <div>Stream</div>
+                   <div  id="stream_select_div"
+                </div>
+              </div>
+            </div>
+            <div class="container">
+              <div class="row">
+                <div class="col-sm">
+                   <div>Manager</div>
+                    <div id="manager_input_div"><input style="width:100%" id="manager_input"></div>              
+                    </div>
+                <div class="col-sm">
+                   <div>LDAP</div>
+                        <div id="ldap_input_div"><input style="width:100%" id="ldap_input"></div>
+                        </div>
+                <div class="col-sm">
+                   <div>Location</div>
+                         <div id="location_input_div"><input style="width:100%" id="location_input"></div>                </div>
+                <div class="col-sm">
+                   <div>Function</div>
+                   <div  id="function_select_div"></div>
+                </div>
+              </div>
+            </div>
+            <div style="margin:5px; width:100%; text-align:center">
+            </div>
+`;
         return s;
     }
 
 }
 
 
-class ProjectAssignmentUI extends BaseUI {
-    constructor(divnames, ids) {
-        super(divnames, ids);
+class HomeUI extends BaseUI {
+    constructor(divnames, filter) {
+        super(divnames, filter);
         this.divnames = divnames;
-        this.project_id = ids.project_id;
-        this.quarter_id = ids.quarter_id;
-        this.subproject_id = ids.subproject_id;
-        this.stream_id = ids.stream_id;
+        this.filterUi = new FilterUI(this.divnames["filter"]);
+        $("#project_select").on("click", function () {
+            alert('hello');
+        });
+
+    }
+
+    show() {
+        var self = this;
+        $(".not_home_page").hide();
+
+        initiate();
+        var contentFunction = function () {
+            var _filterUi = self.filterUi;
+            return function () {
+                var filter = _filterUi.getFilter();
+                document.location = `/project/project_assignments/{"filter":` + JSON.stringify(filter) + "}";
+            }
+        }()
+        var analysisFunction = function () {
+            var _filterUi = self.filterUi;
+            return function () {
+                var filter = _filterUi.getFilter();
+                document.location = `/project/analysis/{"filter":` + JSON.stringify(filter) + "}";
+            }
+        }()
+
+        function initiate() {
+            var promises = [];
+
+            promises.push(function () {
+                return ($.ajax({
+                    url: `/project/api/entity/list/` +
+                        `{"entity_type":"quarter"}`,
+                    method: "GET"
+                }));
+            })
+
+            promises.push(function () {
+                return ($.ajax({
+                    url: `/project/api/entity/list/` +
+                        `{"entity_type":"project"}`,
+                    method: "GET"
+                }));
+            })
+
+            promises.push(function () {
+                return ($.ajax({
+                    url: `/project/api/entity/list/` +
+                        `{"entity_type":"function"}`,
+                    method: "GET"
+                }));
+            })
+
+
+            Utils.callMultiAsync(0, promises, done_func, []);
+        }
+
+        function done_func(responses) {
+            var i = 0;
+            self.quarters = responses[i++]["data"]["entities"];
+            self.projects = responses[i++]["data"]["entities"];
+            self.functions = responses[i++]["data"]["entities"];
+            self.filterUi.setupSelect("quarter", "quarter_select", self.quarters, "id", "name", 0, {
+                "width": "100%"
+            })
+
+            self.filterUi.setupSelect("project", "project_select", self.projects, "id", "name", 0, {
+                "width": "100%"
+            })
+
+            self.filterUi.setupSelect("function", "function_select", self.functions, "id", "name", 0, {
+                "width": "100%"
+            })
+            $("#get_assignments").on("click", contentFunction);
+            $("#get_analysis").on("click", analysisFunction);
+            $("#project_select").on("change", FilterUI.getProjectChangeFunction(self.filterUi));
+            $("#subproject_select").on("change", FilterUI.getSubProjectChangeFunction(self.filterUi));
+        }
+
+    }
+}
+
+class ProjectAssignmentUI
+    extends BaseUI {
+    constructor(divnames, filter) {
+        super(divnames, filter);
+        this.divnames = divnames;
+        this.filter = filter;
 
         this.person_assignments = [];
         this.grid = null;
-        this.cache = {};
-        this.cache["okrs"] = {}
-        this.cache["projects"] = {}
-        this.cache["subprojects"] = {}
-        this.cache["streams"] = {}
+
     }
 
     filterFunc(item, filter) {
@@ -775,44 +1035,6 @@ class ProjectAssignmentUI extends BaseUI {
         }
 
 
-        function setUpQuartersX(quarters, qid) {
-            var str = createSelect("quarter_select", quarters, "id", "name", qid);
-            $("#quarter_select_div").html(str);
-            $("#quarter_select").on("change", function () {
-                var val = $("#quarter_select").val();
-                document.location = `/project/project_assignments/${val}/${self.project_id}/${self.subproject_id}/${self.stream_id}`;
-            })
-        }
-
-        function setUpProjectsX(projects, id) {
-            var str = createSelect("project_select", projects, "id", "name", id);
-            $("#project_select_div").html(str);
-            $("#project_select").on("change", function () {
-                var val = $("#project_select").val();
-                document.location = `/project/project_assignments/${self.quarter_id}/${val}/0/0`;
-            })
-        }
-
-
-        function setUpSubProjectsX(subprojects, id) {
-            var str = createSelect("subproject_select", subprojects, "subproject_id", "subproject", id);
-            $("#subproject_select_div").html(str);
-            $("#subproject_select").on("change", function () {
-                var val = $("#subproject_select").val();
-                document.location = `/project/project_assignments/${self.quarter_id}/${self.project_id}/${val}/0`;
-            })
-        }
-
-
-        function setUpStreamsX(streams, id) {
-            var str = createSelect("stream_select", streams, "stream_id", "stream", id);
-            $("#stream_select_div").html(str);
-            $("#stream_select").on("change", function () {
-                var val = $("#stream_select").val();
-                document.location = `/project/project_assignments/${self.quarter_id}/${self.project_id}/${self.subproject_id}/${val}`;
-            })
-        }
-
         /*
         Project
             Quarter:
@@ -843,11 +1065,11 @@ class ProjectAssignmentUI extends BaseUI {
             map["id"] = {display: "hidden"}
 
             function teammemberFunction(value, item) {
-                return "<td>" + Utils.createSelect("teammember" + item["id"], self.persons, "id", "name", item["teammember_id"], {width: "200px"}) + "</td>";
+                return "<td>" + Utils.createSelect("teammember" + item["id"], self.persons, "id", "name", item["teammember_id"], {width: "95%"}) + "</td>";
             }
 
             function okrFunction(value, item) {
-                var str = "<td>";
+                var str = "<td style='width:300px'>";
 
 
                 function makeFieldArrayFromObjectArray(items, field) {
@@ -876,24 +1098,23 @@ class ProjectAssignmentUI extends BaseUI {
 
                 str += Utils.createSelect("subproject" + item["id"], subprojects, "subproject_id", "subproject", item["subproject_id"], {
                     skip_blank: true,
-                    width: "150px"
+                    width: "29%"
                 })
                 str += Utils.createSelect("stream" + item["id"], item_streams, "stream_id", "stream", item["stream_id"], {
                     skip_blank: true,
-                    width: "150px"
+                    width: "29%"
                 })
                 str += Utils.createSelect("okr" + item["id"], item_okrs, "okr_id", "okr", item["okr_id"], {
                     skip_blank: true,
-                    width: "200px"
+                    width: "39%"
                 });
-
 
                 str += "</td>";
                 return str;
             }
 
             function assignmentFunction(value, item) {
-                return `<td><input type="text" id="assignment${item['id']}" value="${value}"/></td>`;
+                return `<td><input type="text" style="text-align:right; width:90%;" id="assignment${item['id']}" value="${value}"/></td>`;
 
             }
 
@@ -901,11 +1122,11 @@ class ProjectAssignmentUI extends BaseUI {
                 return ("Hello");
             }
 
-            map["teammember"] = {width: 100, display: "Person", "type": teammemberFunction}
+            map["teammember"] = {width: "40%", display: "Person", "type": teammemberFunction}
             map["composed_okr"] = {
-                width: 200, display: "OKR", "type": okrFunction
+                width: "40%", display: "SubProject/Stream/Milestone", "type": okrFunction
             }
-            map["assignment"] = {width: 50, display: "Assignment", "type": assignmentFunction}
+            map["assignment"] = {width: "5$%", display: "Assignment", "type": assignmentFunction}
             self.gridMap = map;
         }
 
@@ -919,49 +1140,60 @@ class ProjectAssignmentUI extends BaseUI {
         }
 
         function done_func(responses) {
-            self.assignments = responses[0]["data"]["entities"];
-            self.persons = responses[1]["data"]["entities"];
-            self.quarters = responses[2]["data"]["entities"];
-            self.projects = responses[3]["data"]["entities"];
-            self.subprojects = responses[4]["data"]["entities"];
-            self.streams = responses[5]["data"]["entities"];
-            self.okrs = responses[6]["data"]["entities"];
+            var i = 0;
+            self.assignments = responses[i++]["data"]["entities"];
+            self.persons = responses[i++]["data"]["entities"];
+            self.quarters = responses[i++]["data"]["entities"];
+            self.projects = responses[i++]["data"]["entities"];
+            self.subprojects = responses[i++]["data"]["entities"];
+            self.streams = responses[i++]["data"]["entities"];
+            self.okrs = responses[i++]["data"]["entities"];
+            self.functions = responses[i++]["data"]["entities"];
 
             var filterUi = new FilterUI(self.divnames["filter"]);
-            filterUi.setupSelect("quarter", "quarter_select", self.quarters, "id", "name", self.quarter_id, {
-                "changeFunc":
-                    function () {
-                        var val = $("#quarter_select").val();
-                        document.location = `/project/project_assignments/${val}/${self.project_id}/${self.subproject_id}/${self.stream_id}`;
-                    }
+            self.filterUi = filterUi;
+            var filterChangeFunction = function () {
+                var _filterUi = filterUi;
+                return function () {
+                    var filter = _filterUi.getFilter();
+                    document.location = `/project/project_assignments/{"filter":` + JSON.stringify(filter) + "}";
+                }
+            }();
+            filterUi.setupSelect("quarter", "quarter_select", self.quarters, "id", "name", self.filter["assignment.quarter_id"], {
+                "width": "100%"
             })
 
-            filterUi.setupSelect("project", "project_select", self.projects, "id", "name", self.project_id, {
-                "changeFunc": function () {
-                    var val = $("#project_select").val();
-                    document.location = `/project/project_assignments/${self.quarter_id}/${val}/0/0`;
-                }
+            filterUi.setupSelect("project", "project_select", self.projects, "id", "name", self.filter["project.id"], {
+                "width": "100%"
 
             })
-            filterUi.setupSelect("subproject", "subproject_select", self.subprojects, "subproject_id", "subproject", self.subproject_id, {
-                    changeFunc: function () {
-                        var val = $("#subproject_select").val();
-                        document.location = `/project/project_assignments/${self.quarter_id}/${self.project_id}/${val}/0`;
-                    }
+            filterUi.setupSelect("subproject", "subproject_select", self.subprojects, "subproject_id", "subproject", self.filter["subproject.id"], {
+                    "width": "100%"
                 }
             )
-            filterUi.setupSelect("stream", "stream_select", self.streams, "subproject_id", "subproject", self.stream_id, {
-                    changeFunc: function () {
-                        var val = $("#stream_select").val();
-                        document.location = `/project/project_assignments/${self.quarter_id}/${self.project_id}/${self.subproject_id}/${val}`;
-                    }
+            filterUi.setupSelect("stream", "stream_select", self.streams, "stream_id", "stream", self.filter["stream.id"], {
+                    "width": "100%"
                 }
             )
+            filterUi.setupSelect("function", "function_select", self.functions, "id", "name", self.filter["function.id"], {
+                    "width": "100%"
+                }
+            )
+            filterUi.setupTextFields([
+                {"name": "manager_input", "value": self.filter["teammember.manager"]},
+                {"name": "ldap_input", "value": self.filter["teammember.ldap"]},
+                {"name": "location_input", "value": self.filter["teammember.location"]},
+            ])
+
+            $("#apply_filter").on("click", filterChangeFunction);
+            $("#project_select").on("change", FilterUI.getProjectChangeFunction(filterUi));
+            $("#subproject_select").on("change", FilterUI.getSubProjectChangeFunction(filterUi));
             createGridMap();
             createGridData();
 
             function teammemberFunction(column, item) {
-                return "<td>" + Utils.createSelect("teammember" + item["teammember_id"], self.persons, "id", "name", item["teammember_id"]) + "</td>";
+                return "<td>" + Utils.createSelect("teammember" + item["teammember_id"], self.persons, "id", "name", item["teammember_id"],
+                    {"width": "95%"}) + "</td>";
             }
 
 
@@ -1031,36 +1263,26 @@ class ProjectAssignmentUI extends BaseUI {
                 }))
             })
 
+            promises.push(function () {
+                var filter = {};
+                filter["entity_type"] = "function";
+                return ($.ajax({
+                    url: `/project/api/entity/list/` + JSON.stringify(filter),
+                    method: "GET"
+                }))
+            })
             Utils.callMultiAsync(0, promises, done_func, responses);
         }
 
         var promises = [];
-        var filter = {};
+        var filter = self.filter;
 
-        /* get the okrs according to filter */
-        if (self.quarter_id) {
-            filter["a.quarter_id"] = [self.quarter_id];
-        }
-
-        if (self.project_id) {
-            filter["project.id"] = [self.project_id];
-        }
-
-        if (self.subproject_id) {
-            filter["subproject.id"] = [self.subproject_id];
-        }
-        if (self.stream_id) {
-            filter["stream.id"] = [self.stream_id];
-        }
-        if (self.okr_id) {
-            filter["okr.id"] = [self.okr_id];
-        }
 
         promises.push(function () {
             var _filter = filter;
             return (function () {
                 return ($.ajax({
-                    url: `/project/api/assignment/list/` + JSON.stringify(_filter),
+                    url: `/project/api/assignment/list/{"fields":[], "filter":` + JSON.stringify(_filter) + `}`,
                     method: "GET"
                 }));
             })
@@ -1468,7 +1690,7 @@ class GridUIX {
     }
 
     addOperatorColumn(fields) {
-        fields.unshift({name: "Ops", type: "text", width: 25})
+        fields.unshift({name: "Ops", type: "text", width: "10%"})
 
     }
 
@@ -1926,7 +2148,7 @@ class GridUI {
             data: this.data,
             fields: this.fields,
             loadIndication: true,
-            loadIndicationDelay:0,
+            loadIndicationDelay: 0,
         });
         self.grid = _grid;
         return _grid;
@@ -1985,7 +2207,7 @@ class AnalysisDivUI {
     createProjectDiv(parentDiv, index) {
         var item = this.data[index];
         parentDiv.append(`<div style="background-color: lightgrey; font-weight:bold; border-top:solid black 1px; width:${this.topWidth}px; padding-top:${this.topPadding}px; padding-bottom:${this.bottomPadding};" id="project${item['project_id']}">` +
-            `<span style="display: inline-block;width:${this.leftSize + this.padding * 2}px">${item['project']}</span>` +
+            `<span style="display: inline-block;width:${this.leftSize + this.padding * 3}px">${item['project']}</span>` +
             `<span style="display: inline-block;width:${this.rightSize};text-align:right;">${item['total']}</span>` +
             `</div>`);
 
@@ -2010,6 +2232,7 @@ class AnalysisDivUI {
     createDivStructure() {
         var data = this.data;
         var parentDiv = $(`#${this.div}`);
+        //  parentDiv.setAttribute("style", "padding:20px");
         for (var i = 0; i < data.length; i++) {
             var item = data[i];
             if (item["project"] != "") { // create proejct div
@@ -2041,7 +2264,7 @@ class ProjectAssignmentGridUI extends GridUI {
     }
 
     addOperatorColumn(fields) {
-        fields.unshift({name: "Ops", type: "text", width: 25})
+        fields.unshift({name: "Ops", type: "text", width: "5%"})
 
     }
 
