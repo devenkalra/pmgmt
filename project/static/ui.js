@@ -1,5 +1,26 @@
-class Utils {
+class ProjectApp {
+    static maxAssignments = 2;
+    static maxLoad = 1.01;
 
+}
+
+class Utils {
+    static onlyUnique(value, index, self) {
+        return self.indexOf(value) === index;
+    }
+
+    static showError(s) {
+        $("#errorText").html(s);
+        $("#error").show();
+    }
+
+    static showInfo(s) {
+        $("#errorText").html(s);
+        $("#error").show();
+        setTimeout(function () {
+            $("#error").hide();
+        }, 1000);
+    }
 
     static updateSelect(name, data, id_field, value_field, selected_id, options) {
         var $el = $(`#${name}`);
@@ -202,7 +223,7 @@ class BaseUI {
     }
 }
 
-class AnalysisUI extends BaseUI {
+                class AnalysisUI extends BaseUI {
     constructor(divnames, filter) {
         super(divnames, filter);
         this.divnames = divnames;
@@ -274,22 +295,6 @@ class AnalysisUI extends BaseUI {
 
     show() {
         var self = this;
-
-        function createSelectX(name, data, id_field, value_field, selected_id) {
-            var str = "";
-            str += `<select class="js-example-basic-single" name="${name}" id="${name}">`;
-            str += `<option value="0"></option>`
-
-            for (var j = 0; j < data.length; j++) {
-                var selected = "";
-                if (data[j][id_field] == selected_id) {
-                    selected = "selected";
-                }
-                str += `<option ${selected} value="${data[j][id_field]}">${data[j][value_field]}</option>`
-            }
-            str += `</select>`;
-            return str;
-        }
 
 
         /*
@@ -458,7 +463,7 @@ class AnalysisUI extends BaseUI {
             self.okrs = okrs;
             */
 
-            var filterUi = new FilterUI(self.divnames["filter"]);
+            var filterUi = new FilterUI(self.divnames["filter"], self, self.filter);
             var filterChangeFunction = function () {
                 var _filterUi = filterUi;
                 return function () {
@@ -473,7 +478,7 @@ class AnalysisUI extends BaseUI {
             filterUi.setupSelect("project", "project_select", self.projects, "id", "name", self.filter["project.id"], {});
             filterUi.setupSelect("subproject", "subproject_select", self.subprojects, "subproject_id", "subproject", self.filter["subproject.id"], {});
             filterUi.setupSelect("stream", "stream_select", self.streams, "stream_id", "stream", self.filter["stream.id"], {});
-            filterUi.setupSelect("function", "function_select", self.functions, "id", "name", self.filter["function.id"], {
+            filterUi.setupSelect("function", "function_select", self.functions, "id", "name", self.filter["function"], {
                     "width": "100%"
                 }
             )
@@ -484,10 +489,11 @@ class AnalysisUI extends BaseUI {
             ])
             createGridMap(3)
             createGridData(3);
+            self.filterUi = filterUi;
             $("#apply_filter").on("click", filterChangeFunction);
 
-            $("#project_select").on("change", FilterUI.getProjectChangeFunction(filterUi));
-            $("#subproject_select").on("change", FilterUI.getSubProjectChangeFunction(filterUi));
+            $("#project_select").on("change", self.filterUi.getProjectChangeFunction(filterUi));
+            $("#subproject_select").on("change", self.filterUi.getSubProjectChangeFunction(filterUi));
             if (self.data.length == 0) {
                 return;
             }
@@ -617,6 +623,23 @@ class AnalysisUI extends BaseUI {
 }
 
 class Data {
+
+    static getDataByFilter() {
+
+    }
+
+    static createComposedOkr(item) {
+        var sep = "";
+        var str = "";
+        ["project", "subproject", "stream", "okr"].forEach(function (field) {
+            if (item[field] != "TBD") {
+                str += sep + item[field];
+                sep = " - ";
+            }
+        })
+        return str;
+    }
+
     static getSubProjectsForProject(project_ids, callback) {
         $.ajax({
             url: `/project/api/entity/list/` +
@@ -639,8 +662,179 @@ class Data {
 }
 
 class FilterUI {
-    static getProjectChangeFunction(filterObj) {
-        var self = filterObj;
+    constructor(divName, containerObj, filter, options) {
+        this.divName = divName;
+        this.options = options;
+        this.filter = filter;
+        this.containerObj = containerObj;
+        $(`#${this.divName}`).html(this.createDivBodyHtml(options))
+        // Setup Defaults
+        if (options && options.quarter_range) {
+            this.setupSelect("quarter", "quarter_start_select", [], "id", "name", 0, {"width": "50%"});
+            this.setupSelect("quarter", "quarter_end_select", [], "id", "name", 0, {"width": "50%"});
+
+        } else {
+            this.setupSelect("quarter", "quarter_select", [], "id", "name", 0, {"width": "100%"});
+        }
+        this.setupSelect("project", "project_select", [], "id", "name", 0, {"width": "100%"})
+        this.setupSelect("subproject", "subproject_select", [], "id", "name", 0, {"width": "100%"})
+        this.setupSelect("stream", "stream_select", [], "id", "name", 0, {"width": "100%"})
+        this.setupSelect("function", "function_select", [], "id", "name", 0, {"width": "100%"})
+    }
+
+    getHierarchyDataFunction() {
+        var _self = this;
+        return (function (responses) {
+            var self = _self;
+            self.functions = responses[0]["data"]["entities"];
+            self.quarters = responses[1]["data"]["entities"];
+            self.projects = responses[2]["data"]["entities"];
+            // Now get projects etc.
+            var project_ids = this.filter["project.id"];
+            if (!project_ids || project_ids.length == 0) {
+                resolve("Stuff worked!");
+                return;
+            }
+            var ajax_filter = {entity_type: "subproject", "project.id": project_ids};
+            $.ajax({
+                url: `/project/api/entity/list/` + JSON.stringify(ajax_filter),
+                method: "GET"
+            }).done(function (response) {
+                self.subprojects = response["data"]["entities"];
+                var subproject_ids = this.filter["subproject.id"];
+                if (!subproject_ids || subproject_ids.length == 0) {
+                    resolve("Stuff worked!");
+                    return;
+                }
+                var ajax_filter = {entity_type: "stream", "subproject.id": subproject_ids};
+                $.ajax({
+                    url: `/project/api/entity/list/` + JSON.stringify(ajax_filter),
+                    method: "GET"
+                }).done(function (response) {
+                    self.streams = response["data"]["entities"];
+                    resolve("Stuff worked!");
+                }).fail(function (response) {
+                    Utils.showError("Filter; Error getting streamsprojects");
+                    reject("error");
+                });
+                resolve("Stuff worked!");
+            })
+        })
+    }
+
+    getFilterData() {
+        var _self = this;
+        // Get quarter, and function data for the selects
+        // For the selected project and subprojects, get the appropriate data options
+        var promise = new Promise(function () {
+            var self = _self;
+            return function (resolve, reject) {
+                $.ajax({
+                    url: `/project/api/entity/forfilter/` + JSON.stringify(self.filter),
+                    method: "GET"
+                }).done(function (response) {
+                    var data = response["data"];
+                    Object.keys(data).forEach(function (key) {
+                        self[key] = data[key]
+                    })
+                    resolve("Done");
+                }).fail(function (response) {
+                    reject("abc");
+                })
+            }
+        }())
+        return promise;
+    }
+
+
+    getSubObjects(responses, data, done_func) {
+        var promises = [];
+        var projects = [];
+        var subprojects = [];
+        var streams = [];
+        for (var i = 0; i < data.length; i++) {
+            projects.push(data[i].project_id);
+            subprojects.push(data[i].subproject_id);
+            streams.push(data[i].stream_id);
+        }
+
+        function onlyUnique(value, index, self) {
+            return self.indexOf(value) === index;
+        }
+
+        var unique_projects = projects.filter(onlyUnique);
+        var unique_subprojects = subprojects.filter(onlyUnique);
+        var unique_streams = streams.filter(onlyUnique);
+
+        promises.push(function () {
+            var filter = {};
+            filter["entity_type"] = "subproject";
+            filter["project.id"] = unique_projects;
+            return ($.ajax({
+                url: `/project/api/entity/list/` + JSON.stringify(filter),
+                method: "GET"
+            }));
+        })
+
+        promises.push(function () {
+            var filter = {};
+            filter["entity_type"] = "stream";
+            filter["subproject.id"] = unique_subprojects;
+            return ($.ajax({
+                url: `/project/api/entity/list/` + JSON.stringify(filter),
+                method: "GET"
+            }))
+        })
+
+        promises.push(function () {
+            var filter = {};
+            filter["entity_type"] = "okr_shallow";
+            filter["stream.id"] = unique_streams;
+            return ($.ajax({
+                url: `/project/api/entity/list/` + JSON.stringify(filter),
+                method: "GET"
+            }))
+        })
+
+
+        promises.push(function () {
+            var filter = {};
+            filter["entity_type"] = "function";
+            return ($.ajax({
+                url: `/project/api/entity/list/` + JSON.stringify(filter),
+                method: "GET"
+            }))
+        })
+        Utils.callMultiAsync(0, promises, done_func, responses);
+
+    }
+
+    fillOutHierarchy() { /* fill out subproject and stream based on the values, at least project should be filled out*/
+        // var project_val = $("#project_select option:selected").val();
+        var project_val = this.containerObj.filter["project.id"];
+        if (!project_val || project_val == "0" || project_val == 0) {
+            // Empty out Subproject and Stream
+            Utils.updateSelect("subproject_select", [], "id", "name", 0);
+            Utils.updateSelect("stream_select", [], "id", "name", 0);
+            return;
+        }
+        var subproject_val = this.containerObj.filter["subproject.id"];
+        if (!subproject_val || subproject_val == 0 || subproject_val == "0") {
+            Utils.updateSelect("subproject_select", this.subprojects, "id", "name", 0);
+            Utils.updateSelect("stream_select", [], "id", "name", 0);
+            return;
+        }
+        Utils.updateSelect("subproject_select", this.subprojects, "id", "name", subproject_val);
+        var stream_val = this.containerObj.filter["stream.id"];
+        if (!stream_val || stream_val == 0 || stream_val == "0") {
+            Utils.updateSelect("stream_select", this.streams, "id", "name", 0);
+            return;
+        }
+        Utils.updateSelect("stream_select", this.streams, "id", "name", stream_val);
+    }
+
+    getProjectChangeFunction() {
+        var self = this;
         return (function () {
             var project_ids = [];
             $("#project_select option:selected").each(function () {
@@ -654,9 +848,10 @@ class FilterUI {
         })
     }
 
-    static getSubProjectChangeFunction(filterObj) {
-        var self = filterObj;
+    getSubProjectChangeFunction() {
+        var self = this;
         return (function () {
+            var self = this;
             var subproject_ids = [];
             $("#subproject_select option:selected").each(function () {
                 subproject_ids.push($(this).val());
@@ -669,19 +864,6 @@ class FilterUI {
     }
 
 
-    constructor(divName, options) {
-        this.divName = divName;
-        $(`#${this.divName}`).html(this.createDivBodyHtml(options))
-        // Setup Defaults
-        this.setupSelect("quarter", "quarter_select", [], "id", "name", 0, {"width": "100%"})
-        this.setupSelect("project", "project_select", [], "id", "name", 0, {"width": "100%"})
-        this.setupSelect("subproject", "subproject_select", [], "id", "name", 0, {"width": "100%"})
-        this.setupSelect("stream", "stream_select", [], "id", "name", 0, {"width": "100%"})
-        this.setupSelect("function", "function_select", [], "id", "name", 0, {"width": "100%"})
-
-
-    }
-
     updateFilterData(startWith) { // project, subproject and stream
         // Check project, subproject and stream and update accordingly
         if (startWith == "project") {
@@ -690,7 +872,7 @@ class FilterUI {
 
     setupSelect(entity, name, data, id_field, value_field, selected_id, options) {
         var str = Utils.createSelect(name, data, id_field, value_field, selected_id, options);
-        $(`#${entity}_select_div`).html(str);
+        $(`#${name}_div`).html(str);
     }
 
     setupTextFields(vals) {
@@ -712,8 +894,26 @@ class FilterUI {
         }
 
         var filter = {};
-        if (isDefined($("#quarter_select").val()) && $("#quarter_select").val() != 0 && $("#quarter_select").val() != "0") {
-            filter["assignment.quarter_id"] = [$("#quarter_select").val()];
+        if (this.options && this.options.quarter_range) {
+            var start, end;
+            if (isDefined($("#quarter_start_select").val()) && $("#quarter_start_select").val() != 0 && $("#quarter_start_select").val() != "0") {
+                start = $("#quarter_start_select").val();
+            }
+            if (isDefined($("#quarter_end_select").val()) && $("#quarter_end_select").val() != 0 && $("#quarter_end_select").val() != "0") {
+                end = $("#quarter_end_select").val();
+            }
+            var options = $('#quarter_start_select option');
+            var option_vals = Utils.getFieldArrayFromDictArray(options, "value");
+            var start_index = option_vals.indexOf(start);
+            var end_index = option_vals.indexOf(end);
+            filter["assignment.quarter_id"] = [];
+            for (var i = start_index; i <= end_index; i++) {
+                filter["assignment.quarter_id"].push(option_vals[i]);
+            }
+        } else {
+            if (isDefined($("#quarter_select").val()) && $("#quarter_select").val() != 0 && $("#quarter_select").val() != "0") {
+                filter["assignment.quarter_id"] = [$("#quarter_select").val()];
+            }
         }
         if (isDefined($("#project_select").val()) && $("#project_select").val() != 0 && $("#project_select").val() != "0") {
             filter["project.id"] = [$("#project_select").val()];
@@ -725,7 +925,7 @@ class FilterUI {
             filter["stream.id"] = [$("#stream_select").val()];
         }
         if (isDefined($("#function_select").val()) && $("#function_select").val() != 0 && $("#function_select").val() != "0") {
-            filter["function.id"] = [$("#function_select").val()];
+            filter["function"] = [$("#function_select").val()];
         }
         if ($("#manager_input").val() != "") {
             filter["teammember.manager"] = [$("#manager_input").val()];
@@ -747,19 +947,28 @@ class FilterUI {
             <div class="container">
               <div class="row">
                 <div class="col-sm">
-                   <div>Quarter</div>
+                `;
+        if (this.options && this.options.quarter_range) {
+            s += `<div>Quarter Range</div>
+                   <div id="quarter_start_select_div"></div>
+                   <div id="quarter_end_select_div"></div>
+
+                </div>`;
+        } else {
+            s += `<div>Quarter</div>
                    <div id="quarter_select_div"></div>
-                </div>
-                <div class="col-sm">
-                   <div>Project</div>
+                </div>`;
+        }
+        s += ` <div class="col-sm">
+                   <div>Area</div>
                    <div  id="project_select_div"></div>
                 </div>
                 <div class="col-sm">
-                   <div>Subproject</div>
+                   <div>Sub Area</div>
                    <div  id="subproject_select_div"></div>
                 </div>
                 <div class="col-sm">
-                   <div>Stream</div>
+                   <div>Project</div>
                    <div  id="stream_select_div"
                 </div>
               </div>
@@ -792,11 +1001,12 @@ class FilterUI {
 }
 
 
-class HomeUI extends BaseUI {
+class HomeUI
+    extends BaseUI {
     constructor(divnames, filter) {
         super(divnames, filter);
         this.divnames = divnames;
-        this.filterUi = new FilterUI(this.divnames["filter"]);
+        this.filterUi = new FilterUI(this.divnames["filter"], self, filter);
         $("#project_select").on("click", function () {
             alert('hello');
         });
@@ -822,6 +1032,7 @@ class HomeUI extends BaseUI {
                 document.location = `/project/analysis/{"filter":` + JSON.stringify(filter) + "}";
             }
         }()
+
 
         function initiate() {
             var promises = [];
@@ -872,10 +1083,573 @@ class HomeUI extends BaseUI {
             })
             $("#get_assignments").on("click", contentFunction);
             $("#get_analysis").on("click", analysisFunction);
-            $("#project_select").on("change", FilterUI.getProjectChangeFunction(self.filterUi));
-            $("#subproject_select").on("change", FilterUI.getSubProjectChangeFunction(self.filterUi));
+            $("#project_select").on("change", self.filterUi.getProjectChangeFunction(self.filterUi));
+            $("#subproject_select").on("change", self.filterUi.getSubProjectChangeFunction(self.filterUi));
+            $("people_assignments").on("click", function () {
+                var _filterUi = self.filterUi;
+                return function () {
+                    var filter = _filterUi.getFilter();
+                    document.location = `/project/people_assignments/{"filter":` + JSON.stringify(filter) + "}";
+                }
+            }())
+            $("people_quarters").on("click", function () {
+                var _filterUi = self.filterUi;
+                return function () {
+                    var filter = _filterUi.getFilter();
+                    document.location = `/project/people_assignments/{"filter":` + JSON.stringify(filter) + "}";
+                }
+            }())
+
+
         }
 
+    }
+}
+
+class PeopleQuartersUI extends BaseUI {
+    constructor(divnames, filter) {
+        super(divnames, filter);
+        this.divnames = divnames;
+        this.filter = filter;
+
+        this.person_assignments = [];
+        this.grid = null;
+
+    }
+
+
+    show() {
+        var self = this;
+        var filterUi = new FilterUI(self.divnames["filter"], self, this.filter, {"quarter_range": true});
+        self.filterUi = filterUi;
+
+        /*
+        Project
+            Quarter:
+                Person1:
+                    OKR Assignment11
+                    OKR  Assignment12
+                Person2:
+                    Person2 Assignment2
+
+         */
+
+
+        function createGridMap() {
+            var map = {};
+            map["teammember"] = {display: "Person", "type": teammemberFunction}
+            var options = $('#quarter_start_select option');
+            var option_vals = Utils.getFieldArrayFromDictArray(options, "value");
+            var start = $("#quarter_start_select").val();
+            var end = $("#quarter_end_select").val();
+            var start_index = option_vals.indexOf(start);
+            var end_index = option_vals.indexOf(end);
+            self.selected_quarters = [];
+
+            filter["assignment.quarter_id"] = [];
+            for (var i = start_index; i <= end_index; i++) {
+                self.selected_quarters.push({"value": options[i].value, "text": options[i].text})
+                map[`quarter${self.selected_quarters[i - start_index].value}`] = {
+                    "display": `${self.selected_quarters[i - start_index].text}`,
+                    "type": quarterFunction
+                }
+            }
+
+            function teammemberFunction(value, item) {
+                var color = "";
+                if (parseFloat(item["load"]) > ProjectApp.maxLoad) {
+                    color = " color:red";
+                }
+                if (item.assignments > ProjectApp.maxAssignments) {
+                    color = " color:orange";
+                }
+                if (parseFloat(item["load"]) < 0.001) {
+                    color = " color:brown";
+                }
+                return `<td style='vertical-align:top;${color}'>` + value + "</td>";
+            }
+
+
+            function quarterFunction(value, item) {
+                var color = "";
+                if (!value) {
+                    value = {str: "", load: 0, assignments: 0};
+                }
+                if (parseFloat(value.load) > ProjectApp.maxLoad) {
+                    color = " color:red";
+                }
+                if (value.assignments > ProjectApp.maxAssignments) {
+                    color = " color:orange";
+                }
+                if (parseFloat(value.load) < 0.001) {
+                    color = " color:brown";
+                }
+                return `<td style='vertical-align:top;${color}'>` + value.str + "</td>";
+
+            }
+
+            self.gridMap = map;
+        }
+
+
+        function createGridData() {
+            var items = self.assignments; // sorted by quarter and by person
+
+            var data_dict = {}
+            var current_quarter = self.selected_quarters[0];
+            for (var i = 0; i < items.length; i++) {
+                var teammember_id = items[i].teammember_id;
+                if (!data_dict[teammember_id]) {
+                    data_dict[teammember_id] = {}
+                }
+                var quarter_id = items[i].quarter_id;
+                if (!data_dict[teammember_id][quarter_id]) {
+                    data_dict[teammember_id][quarter_id] = [];
+                }
+                data_dict[teammember_id][quarter_id].push(items[i]);
+            }
+            var persons = Object.keys(data_dict);
+            var data = [];
+            for (var i = 0; i < persons.length; i++) {
+                var obj = {};
+                var quarters_obj = data_dict[persons[i]];
+                var quarters = Object.keys(quarters_obj);
+                for (var j = 0; j < quarters.length; j++) {
+                    var person_load = 0;
+                    var person_assignments = 0;
+                    var quarter_array = quarters_obj[quarters[j]];
+                    var str = "";
+                    var seperator = "";
+                    for (var k = 0; k < quarter_array.length; k++) {
+                        str += seperator + Data.createComposedOkr(quarter_array[k]) + ` (${quarter_array[k].assignment})`;
+                        person_assignments++;
+                        person_load += quarter_array[k]["assignment"];
+                        seperator = " <br> "
+                    }
+                    obj[`quarter${quarters[j]}`] = {"str": str, "load": person_load, "assignments": person_assignments};
+
+                }
+                obj["teammember"] = quarter_array[k - 1]["teammember"];
+                obj["teammember_id"] = quarter_array[k - 1]["teammember_id"];
+                data.push(obj);
+            }
+            self.data = data;
+        }
+
+
+        function done_func(responses) {
+
+            var filterUi = self.filterUi;
+            var filterChangeFunction = function () {
+                var _filterUi = filterUi;
+                return function () {
+                    var filter = _filterUi.getFilter();
+                    document.location = `/project/people_quarters/{"filter":` + JSON.stringify(filter) + "}";
+                }
+            }();
+            var filter_quarters = self.filter["assignment.quarter_id"];
+            filterUi.setupSelect("quarter", "quarter_start_select", self.filterUi.quarters, "id", "name", filter_quarters[0], {
+                "width": "100%"
+            })
+            filterUi.setupSelect("quarter", "quarter_end_select", self.filterUi.quarters, "id", "name", filter_quarters[filter_quarters.length - 1], {
+                "width": "100%"
+            })
+
+            filterUi.setupSelect("project", "project_select", self.filterUi.projects, "id", "name", self.filter["project.id"], {
+                "width": "100%"
+
+            })
+            filterUi.fillOutHierarchy();
+
+            filterUi.setupSelect("function", "function_select", self.filterUi.functions, "id", "name", self.filter["function"], {
+                    "width": "100%"
+                }
+            )
+            filterUi.setupTextFields([
+                {"name": "manager_input", "value": self.filter["teammember.manager"]},
+                {"name": "ldap_input", "value": self.filter["teammember.ldap"]},
+                {"name": "location_input", "value": self.filter["teammember.location"]},
+            ])
+
+            $("#apply_filter").on("click", filterChangeFunction);
+            $("#project_select").on("change", self.filterUi.getProjectChangeFunction(filterUi));
+            $("#subproject_select").on("change", self.filterUi.getSubProjectChangeFunction(filterUi));
+            if (self.assignments.length == 0) {
+                Utils.showError("Not Data Returned");
+                return;
+            }
+            createGridMap();
+            createGridData();
+
+            function teammemberFunction(column, item) {
+                return "<td>" + Utils.createSelect("teammember" + item["teammember_id"], self.persons, "id", "name", item["teammember_id"],
+                    {"width": "95%"}) + "</td>";
+            }
+
+
+            var options = {
+                addRow: true, addRowDivName: self.divnames["addrow"], addRowData:
+                    {"teammember": "", "teammember_id": 0, "okr": "", "okr_id": 0, "assignment": 0}
+            };
+            self.grid = new PeopleAssignmentGridUI(self.divnames["assignments"], self.gridMap, self.data, self, options);
+            self.grid.show(self.divnames["assignments"]);
+
+        }
+
+        function getSecondaryData(responses) {
+            self.assignments = responses[0]["data"]["entities"];
+            self.teammembers = responses[1]["data"]["entities"];
+
+
+            /* get sub projects for selected elements */
+            var data = responses[0]["data"]["entities"];
+
+
+            self.filterUi.getFilterData().then(function (responses) {
+                var data = self.assignments;
+                var projects = Utils.getFieldArrayFromDictArray(self.assignments, "project_id").filter(Utils.onlyUnique);
+                var subprojects = Utils.getFieldArrayFromDictArray(self.assignments, "subproject_id").filter(Utils.onlyUnique);
+                var streams = Utils.getFieldArrayFromDictArray(self.assignments, "stream_id").filter(Utils.onlyUnique);
+                var filter = {projects: projects, subprojects: subprojects, streams: streams}
+                $.ajax({
+                    url: `/project/api/subobjects/list/` + JSON.stringify(filter),
+                    method: "GET"
+                }).then(function (objects) {
+                    self.cache={}
+                    self.cache.subprojects = objects["data"]["subprojects"];
+                    self.cache.streams = objects["data"]["streams"];
+                    self.cache.okrs = objects["data"]["okrs"];
+                    done_func(responses);
+
+                })
+            }, function (err) {
+                Utils.showError("Error getting data");
+            })
+        }
+
+
+
+        var promises = [];
+        var filter = self.filter;
+
+
+        promises.push(function () {
+            var _filter = filter;
+            return (function () {
+                return ($.ajax({
+                    url: `/project/api/assignment/list/{"fields":["assignments.quarter_id"], "filter":` + JSON.stringify(_filter) + `, "order by":["assignment.quarter_id", "teammember"]}`,
+                    method: "GET"
+                }));
+            })
+        }())
+
+        /* list of people */
+        promises.push(function () {
+            return ($.ajax({
+                url: `/project/api/entity/list/` +
+                    `{"entity_type":"teammember"}`,
+                method: "GET"
+            }));
+        })
+
+
+        Utils.callMultiAsync(0, promises, getSecondaryData, []);
+
+// http://localhost:8000/project/api/assignment/summary/%7B%22filter%22:%7B%22teammember.id%22:[2]%7D%7D
+    }
+}
+
+class PeopleAssignmentUI
+    extends BaseUI {
+    constructor(divnames, filter) {
+        super(divnames, filter);
+        this.divnames = divnames;
+        this.filter = filter;
+
+        this.person_assignments = [];
+        this.grid = null;
+
+    }
+
+
+    show() {
+        var self = this;
+        var filterUi = new FilterUI(self.divnames["filter"], self, self.filter);
+        self.filterUi = filterUi;
+
+        /*
+        Project
+            Quarter:
+                Person1:
+                    OKR Assignment11
+                    OKR  Assignment12
+                Person2:
+                    Person2 Assignment2
+
+         */
+
+
+        function createGridMap() {
+            var map = {};
+            map["teammember"] = {display: "Person", "type": teammemberFunction}
+            map["total"] = {width: "30px", display: "", "type": totalFunction};
+
+            var maxProjects = 2;
+            var items = self.assignments;
+            var max_assignments = 0;
+            var person_assignments = 0;
+            var person_id = items[0]["teammember_id"];
+            var person_assignments = 1;
+            var person_total = items[0]["assignment"]
+            for (var i = 1; i < items.length; i++) {
+                if (items[i]["teammember_id"] != person_id) {
+                    if (max_assignments < person_assignments) {
+                        max_assignments = person_assignments;
+                    }
+                    person_id = items[i]["teammember_id"];
+                    person_assignments = 1;
+                } else {
+                    person_assignments++;
+
+                }
+            }
+            if (max_assignments < person_assignments) {
+                max_assignments = person_assignments;
+            }
+            var config = {};
+            config["max_assignments"] = max_assignments;
+            config.maxProjects = maxProjects;
+            self.config = config;
+            var projects_to_show = (max_assignments > maxProjects ? maxProjects : max_assignments);
+            for (var i = 0; i < projects_to_show; i++) {
+                map[`project${i}`] = {display: `Project ${i + 1}`, "type": projectFunction};
+                map[`project_assignment${i}`] = {width: "20px", display: ``, "type": assignmentFunction};
+            }
+            map[`project${i}`] = {display: `Others`, "type": projectFunction};
+            map[`project_assignment${i}`] = {width: "20px", display: ``, "type": assignmentFunction};
+
+
+            function teammemberFunction(value, item) {
+                var color = "";
+                if (parseFloat(item["total"]) > ProjectApp.maxLoad) {
+                    color = " color:red";
+                }
+                if (item.total_assignments > ProjectApp.maxAssignments) {
+                    color = " color:orange";
+                }
+                if (parseFloat(item["total"]) < 0.001) {
+                    color = " color:brown";
+                }
+                return `<td style='vertical-align:top;${color}'>` + value + "</td>";
+            }
+
+            function totalFunction(value, item) {
+                var color = "";
+                if (parseFloat(item["total"]) > 1.0) {
+                    color = " color:red"
+                }
+                return `<td style='vertical-align:top;${color}'>` + value + "</td>";
+            }
+
+            function projectFunction(value, item) {
+                if (!value) {
+                    value = "";
+                }
+                return "<td style='vertical-align:top'>" + value + "</td>";
+
+            }
+
+            function assignmentFunction(value, item) {
+                if (!value) {
+                    value = "";
+                }
+                return "<td style='vertical-align:top'>" + value + "</td>";
+            }
+
+
+            self.gridMap = map;
+        }
+
+
+        function createGridData() {
+            var config = self.config;
+            var max_assignments = config.max_assignments;
+            var maxProjects = config.maxProjects;
+            var data = [];
+            var items = self.assignments;
+            var person_id = items[0]["teammember_id"];
+            var person_assignments = 0;
+            if (items[0].assignment == "") {
+                items[0].assignment = 0.0;
+            }
+            var person_total = 0;
+            var obj = {};
+            obj["teammember"] = items[0].teammember;
+            obj[`project${person_assignments}`] = Data.createComposedOkr(items[0]);
+            obj[`project_assignment${person_assignments}`] = items[0].assignment;
+            person_assignments++;
+            person_total += items[0]["assignment"]
+
+            var assignment_num = 0;
+            var projects_to_show = (max_assignments > maxProjects ? maxProjects : max_assignments);
+
+            for (var i = 1; i < items.length; i++) {
+                if (items[i].assignment == "") {
+                    items[i].assignment = 0.0;
+                }
+                if (items[i]["teammember_id"] != person_id) {
+                    for (var j = person_assignments; j < max_assignments; j++) {
+                        obj[`project${j}`] = "";
+                        obj[`project_assignment${j}`] = "";
+                    }
+                    obj.total = person_total.toFixed(2);
+                    obj.total_assignments = person_assignments;
+
+                    data.push(obj);
+                    person_id = items[i]["teammember_id"];
+                    person_assignments = 0;
+                    assignment_num = 0;
+                    person_total = items[i]["assignment"]
+                    obj = {};
+                    obj["teammember"] = items[i].teammember;
+                    obj[`project${person_assignments}`] = Data.createComposedOkr(items[i]);
+                    obj[`project_assignment${person_assignments}`] = items[i].assignment;
+                    person_assignments++;
+
+                } else {
+                    var sep = "";
+                    var str = Data.createComposedOkr(items[i])
+                    if (person_assignments > projects_to_show) {
+                        obj[`project${projects_to_show}`] += "<br>" + str;
+                        obj[`project_assignment${projects_to_show}`] += "<br>" + items[i].assignment;
+
+                    } else {
+                        obj[`project${person_assignments}`] = str;
+                        obj[`project_assignment${person_assignments}`] = items[i].assignment;
+                    }
+                    person_assignments++;
+                    person_total += items[i]["assignment"]
+
+
+                }
+
+            }
+            obj.total = person_total.toFixed(2);
+            obj.total_assignments = person_assignments;
+            data.push(obj);
+            self.data = data;
+        }
+
+
+        function done_func(responses) {
+
+            var filterUi = self.filterUi;
+            var filterChangeFunction = function () {
+                var _filterUi = filterUi;
+                return function () {
+                    var filter = _filterUi.getFilter();
+                    document.location = `/project/people_assignments/{"filter":` + JSON.stringify(filter) + "}";
+                }
+            }();
+            filterUi.setupSelect("quarter", "quarter_select", self.filterUi.quarters, "id", "name", self.filter["assignment.quarter_id"], {
+                "width": "100%"
+            })
+
+            filterUi.setupSelect("project", "project_select", self.filterUi.projects, "id", "name", self.filter["project.id"], {
+                "width": "100%"
+
+            })
+            filterUi.fillOutHierarchy();
+
+            filterUi.setupSelect("function", "function_select", self.filterUi.functions, "id", "name", self.filter["function"], {
+                    "width": "100%"
+                }
+            )
+            filterUi.setupTextFields([
+                {"name": "manager_input", "value": self.filter["teammember.manager"]},
+                {"name": "ldap_input", "value": self.filter["teammember.ldap"]},
+                {"name": "location_input", "value": self.filter["teammember.location"]},
+            ])
+
+            $("#apply_filter").on("click", filterChangeFunction);
+            $("#project_select").on("change", self.filterUi.getProjectChangeFunction(filterUi));
+            $("#subproject_select").on("change", self.filterUi.getSubProjectChangeFunction(filterUi));
+            if (self.assignments.length == 0) {
+                Utils.showError("No Data matches this filter, please refine filter.");
+                return;
+            }
+            createGridMap();
+            createGridData();
+
+            function teammemberFunction(column, item) {
+                return "<td>" + Utils.createSelect("teammember" + item["teammember_id"], self.persons, "id", "name", item["teammember_id"],
+                    {"width": "95%"}) + "</td>";
+            }
+
+
+            var options = {
+                addRow: true, addRowDivName: self.divnames["addrow"], addRowData:
+                    {"teammember": "", "teammember_id": 0, "okr": "", "okr_id": 0, "assignment": 0}
+            };
+            self.grid = new PeopleAssignmentGridUI(self.divnames["assignments"], self.gridMap, self.data, self, options);
+            self.grid.show(self.divnames["assignments"]);
+
+        }
+
+        function getSecondaryData(responses) {
+            self.assignments = responses[0]["data"]["entities"];
+            self.teammembers = responses[1]["data"]["entities"];
+           /* get sub projects for selected elements */
+            var data = responses[0]["data"]["entities"];
+                   self.filterUi.getFilterData().then(function (responses) {
+                var data = self.assignments;
+                var projects = Utils.getFieldArrayFromDictArray(self.assignments, "project_id").filter(Utils.onlyUnique);
+                var subprojects = Utils.getFieldArrayFromDictArray(self.assignments, "subproject_id").filter(Utils.onlyUnique);
+                var streams = Utils.getFieldArrayFromDictArray(self.assignments, "stream_id").filter(Utils.onlyUnique);
+                var filter = {projects: projects, subprojects: subprojects, streams: streams}
+                $.ajax({
+                    url: `/project/api/subobjects/list/` + JSON.stringify(filter),
+                    method: "GET"
+                }).then(function (objects) {
+                    self.cache={}
+                    self.cache.subprojects = objects["data"]["subprojects"];
+                    self.cache.streams = objects["data"]["streams"];
+                    self.cache.okrs = objects["data"]["okrs"];
+                    done_func(responses);
+
+                })
+            }, function (err) {
+                Utils.showError("Error getting data");
+            })
+       }
+
+        var promises = [];
+        var filter = self.filter;
+
+
+        promises.push(function () {
+            var _filter = filter;
+            return (function () {
+                return ($.ajax({
+                    url: `/project/api/assignment/list/{"fields":[], "filter":` + JSON.stringify(_filter) + `, "order by":["teammember"]}`,
+                    method: "GET"
+                }));
+            })
+        }())
+
+        /* list of people */
+        promises.push(function () {
+            return ($.ajax({
+                url: `/project/api/entity/list/` +
+                    `{"entity_type":"teammember"}`,
+                method: "GET"
+            }));
+        })
+
+
+        Utils.callMultiAsync(0, promises, getSecondaryData, []);
+
+// http://localhost:8000/project/api/assignment/summary/%7B%22filter%22:%7B%22teammember.id%22:[2]%7D%7D
     }
 }
 
@@ -983,6 +1757,14 @@ class ProjectAssignmentUI
 
     }
 
+    revertDisplay(id) {
+        console.log("revert")
+    }
+
+    updateFromDisplay(id) {
+
+    }
+
     updateItem(id, person, okr, assignment) {
 
         var csrftoken = Utils.getCookie('csrftoken');
@@ -993,14 +1775,25 @@ class ProjectAssignmentUI
                 }
             }
         });
+        var quarter_id = $("#quarter_select").val();
+        if (!quarter_id || quarter_id == "0" || quarter_id == 0) {
+            Utils.showError("Updates can only happen if a quarter is selected in the filter. Please filter and try again.")
+            return;
+        }
         var delete_array = [];
         var add_array = [];
+        var assignment = parseFloat(assignment);
+        if (!assignment) {
+            Utils.showError("Assignment should be a decimal number")
+            this.revertDisplay(id);
+            return;
+        }
         var update_array = [{
             "id": id,
             "okr_id": okr,
             "assignment": parseFloat(assignment),
             "teammember_id": person,
-            "quarter_id": this.quarter_id,
+            "quarter_id": quarter_id,
         }]
         return ($.ajax({
             url: "/project/api/entities/update",
@@ -1017,34 +1810,8 @@ class ProjectAssignmentUI
 
     show() {
         var self = this;
-
-        function createSelect(name, data, id_field, value_field, selected_id) {
-            var str = "";
-            str += `<select class="js-example-basic-single" name="${name}" id="${name}">`;
-            str += `<option value="0"></option>`
-
-            for (var j = 0; j < data.length; j++) {
-                var selected = "";
-                if (data[j][id_field] == selected_id) {
-                    selected = "selected";
-                }
-                str += `<option ${selected} value="${data[j][id_field]}">${data[j][value_field]}</option>`
-            }
-            str += `</select>`;
-            return str;
-        }
-
-
-        /*
-        Project
-            Quarter:
-                Person1:
-                    OKR Assignment11
-                    OKR  Assignment12
-                Person2:
-                    Person2 Assignment2
-
-         */
+        var filterUi = new FilterUI(self.divnames["filter"], self, self.filter);
+        this.filterUi = filterUi;
 
 
         function add_person_assignment(assignment) {
@@ -1065,7 +1832,7 @@ class ProjectAssignmentUI
             map["id"] = {display: "hidden"}
 
             function teammemberFunction(value, item) {
-                return "<td>" + Utils.createSelect("teammember" + item["id"], self.persons, "id", "name", item["teammember_id"], {width: "95%"}) + "</td>";
+                return "<td style='width:200px'>" + Utils.createSelect("teammember" + item["id"], self.teammembers, "id", "name", item["teammember_id"], {width: "95%"}) + "</td>";
             }
 
             function okrFunction(value, item) {
@@ -1080,33 +1847,23 @@ class ProjectAssignmentUI
                     return fields;
                 }
 
-                var subprojects = self.subprojects;
-                var streams = self.streams;
-                var item_streams = [];
-                for (var i = 0; i < streams.length; i++) {
-                    if (streams[i].subproject_id == item["subproject_id"]) {
-                        item_streams.push(streams[i]);
-                    }
-                }
-                var okrs = self.okrs;
-                var item_okrs = [];
-                for (var i = 0; i < okrs.length; i++) {
-                    if (okrs[i].stream_id == item["stream_id"]) {
-                        item_okrs.push(okrs[i]);
-                    }
-                }
+                var item_subprojects = self.cache.subprojects[item.project_id];
+                var item_streams = self.cache.streams[item.subproject_id];
+                var item_okrs = self.cache.okrs[item.stream_id]
 
-                str += Utils.createSelect("subproject" + item["id"], subprojects, "subproject_id", "subproject", item["subproject_id"], {
+
+                str += `<b>${item["project"]} </b><br>`
+                str += Utils.createSelect("subproject" + item["id"], item_subprojects, "id", "name", item["subproject_id"], {
                     skip_blank: true,
-                    width: "29%"
+                    width: "25%"
                 })
-                str += Utils.createSelect("stream" + item["id"], item_streams, "stream_id", "stream", item["stream_id"], {
+                str += Utils.createSelect("stream" + item["id"], item_streams, "id", "name", item["stream_id"], {
                     skip_blank: true,
-                    width: "29%"
+                    width: "25%"
                 })
-                str += Utils.createSelect("okr" + item["id"], item_okrs, "okr_id", "okr", item["okr_id"], {
+                str += Utils.createSelect("okr" + item["id"], item_okrs, "id", "name", item["okr_id"], {
                     skip_blank: true,
-                    width: "39%"
+                    width: "50%"
                 });
 
                 str += "</td>";
@@ -1114,19 +1871,16 @@ class ProjectAssignmentUI
             }
 
             function assignmentFunction(value, item) {
-                return `<td><input type="text" style="text-align:right; width:90%;" id="assignment${item['id']}" value="${value}"/></td>`;
+                return `<td style="vertical-align:bottom"><input type="text" style="text-align:right; width:95%;" id="assignment${item['id']}" value="${value}"/></td>`;
 
             }
 
-            function filterOkr(a, b, c) {
-                return ("Hello");
-            }
 
-            map["teammember"] = {width: "40%", display: "Person", "type": teammemberFunction}
+            map["teammember"] = {display: "Person", width: "100px", "type": teammemberFunction}
             map["composed_okr"] = {
-                width: "40%", display: "SubProject/Stream/Milestone", "type": okrFunction
+                display: "Area/SubArea/Stream/Milestone", width: "200px", "type": okrFunction
             }
-            map["assignment"] = {width: "5$%", display: "Assignment", "type": assignmentFunction}
+            map["assignment"] = {width: "25px", display: "Assignment", "type": assignmentFunction}
             self.gridMap = map;
         }
 
@@ -1135,23 +1889,12 @@ class ProjectAssignmentUI
             self.data = self.assignments;
             var data = self.data;
             for (var i = 0; i < data.length; i++) {
-                data[i]["composed_okr"] = data[i]["subproject"] + "-" + data[i]["stream"] + "-" + data[i]["okr"];
+                data[i]["composed_okr"] = data[i]["project"] + "-" + data[i]["subproject"] + "-" + data[i]["stream"] + "-" + data[i]["okr"];
             }
         }
 
         function done_func(responses) {
-            var i = 0;
-            self.assignments = responses[i++]["data"]["entities"];
-            self.persons = responses[i++]["data"]["entities"];
-            self.quarters = responses[i++]["data"]["entities"];
-            self.projects = responses[i++]["data"]["entities"];
-            self.subprojects = responses[i++]["data"]["entities"];
-            self.streams = responses[i++]["data"]["entities"];
-            self.okrs = responses[i++]["data"]["entities"];
-            self.functions = responses[i++]["data"]["entities"];
 
-            var filterUi = new FilterUI(self.divnames["filter"]);
-            self.filterUi = filterUi;
             var filterChangeFunction = function () {
                 var _filterUi = filterUi;
                 return function () {
@@ -1159,23 +1902,17 @@ class ProjectAssignmentUI
                     document.location = `/project/project_assignments/{"filter":` + JSON.stringify(filter) + "}";
                 }
             }();
-            filterUi.setupSelect("quarter", "quarter_select", self.quarters, "id", "name", self.filter["assignment.quarter_id"], {
+            filterUi.setupSelect("quarter", "quarter_select", self.filterUi.quarters, "id", "name", self.filter["assignment.quarter_id"], {
                 "width": "100%"
             })
 
-            filterUi.setupSelect("project", "project_select", self.projects, "id", "name", self.filter["project.id"], {
+            filterUi.setupSelect("project", "project_select", self.filterUi.projects, "id", "name", self.filter["project.id"], {
                 "width": "100%"
 
             })
-            filterUi.setupSelect("subproject", "subproject_select", self.subprojects, "subproject_id", "subproject", self.filter["subproject.id"], {
-                    "width": "100%"
-                }
-            )
-            filterUi.setupSelect("stream", "stream_select", self.streams, "stream_id", "stream", self.filter["stream.id"], {
-                    "width": "100%"
-                }
-            )
-            filterUi.setupSelect("function", "function_select", self.functions, "id", "name", self.filter["function.id"], {
+            filterUi.fillOutHierarchy();
+
+            filterUi.setupSelect("function", "function_select", self.filterUi.functions, "id", "name", self.filter["function"], {
                     "width": "100%"
                 }
             )
@@ -1186,8 +1923,8 @@ class ProjectAssignmentUI
             ])
 
             $("#apply_filter").on("click", filterChangeFunction);
-            $("#project_select").on("change", FilterUI.getProjectChangeFunction(filterUi));
-            $("#subproject_select").on("change", FilterUI.getSubProjectChangeFunction(filterUi));
+            $("#project_select").on("change", self.filterUi.getProjectChangeFunction(filterUi));
+            $("#subproject_select").on("change", self.filterUi.getSubProjectChangeFunction(filterUi));
             createGridMap();
             createGridData();
 
@@ -1207,71 +1944,29 @@ class ProjectAssignmentUI
         }
 
         function getSecondaryData(responses) {
+
             self.assignments = responses[0]["data"]["entities"];
             self.teammembers = responses[1]["data"]["entities"];
-            self.quarters = responses[2]["data"]["entities"];
-            self.projects = responses[3]["data"]["entities"];
-
-            /* get sub projects for selected elements */
-
-            var data = responses[0]["data"]["entities"];
-            var promises = [];
-            var projects = [];
-            var subprojects = [];
-            var streams = [];
-            for (var i = 0; i < data.length; i++) {
-                projects.push(data[i].project_id);
-                subprojects.push(data[i].subproject_id);
-                streams.push(data[i].stream_id);
-            }
-
-            function onlyUnique(value, index, self) {
-                return self.indexOf(value) === index;
-            }
-
-            var unique_projects = projects.filter(onlyUnique);
-            var unique_subprojects = subprojects.filter(onlyUnique);
-            var unique_streams = streams.filter(onlyUnique);
-
-            promises.push(function () {
-                var filter = {};
-                filter["entity_type"] = "subproject";
-                filter["project.id"] = unique_projects;
-                return ($.ajax({
-                    url: `/project/api/entity/list/` + JSON.stringify(filter),
+            self.filterUi.getFilterData().then(function (responses) {
+                var data = self.assignments;
+                var projects = Utils.getFieldArrayFromDictArray(self.assignments, "project_id").filter(Utils.onlyUnique);
+                var subprojects = Utils.getFieldArrayFromDictArray(self.assignments, "subproject_id").filter(Utils.onlyUnique);
+                var streams = Utils.getFieldArrayFromDictArray(self.assignments, "stream_id").filter(Utils.onlyUnique);
+                var filter = {projects: projects, subprojects: subprojects, streams: streams}
+                $.ajax({
+                    url: `/project/api/subobjects/list/` + JSON.stringify(filter),
                     method: "GET"
-                }));
-            })
+                }).then(function (objects) {
+                    self.cache={}
+                    self.cache.subprojects = objects["data"]["subprojects"];
+                    self.cache.streams = objects["data"]["streams"];
+                    self.cache.okrs = objects["data"]["okrs"];
+                    done_func(responses);
 
-            promises.push(function () {
-                var filter = {};
-                filter["entity_type"] = "stream";
-                filter["subproject.id"] = unique_subprojects;
-                return ($.ajax({
-                    url: `/project/api/entity/list/` + JSON.stringify(filter),
-                    method: "GET"
-                }))
+                })
+            }, function (err) {
+                Utils.showError("Error getting data");
             })
-
-            promises.push(function () {
-                var filter = {};
-                filter["entity_type"] = "okr_shallow";
-                filter["stream.id"] = unique_streams;
-                return ($.ajax({
-                    url: `/project/api/entity/list/` + JSON.stringify(filter),
-                    method: "GET"
-                }))
-            })
-
-            promises.push(function () {
-                var filter = {};
-                filter["entity_type"] = "function";
-                return ($.ajax({
-                    url: `/project/api/entity/list/` + JSON.stringify(filter),
-                    method: "GET"
-                }))
-            })
-            Utils.callMultiAsync(0, promises, done_func, responses);
         }
 
         var promises = [];
@@ -1296,29 +1991,6 @@ class ProjectAssignmentUI
                 method: "GET"
             }));
         })
-        /* list of quarters */
-        promises.push(function () {
-            return ($.ajax({
-                url: `/project/api/entity/list/` +
-                    `{"entity_type":"quarter"}`,
-                method: "GET"
-            }))
-        })
-
-
-        /* list of projects */
-        filter = {}
-        filter["entity_type"] = "project";
-
-        promises.push(function () {
-            var _filter = filter;
-            return (function () {
-                return ($.ajax({
-                    url: `/project/api/entity/list/` + JSON.stringify(filter),
-                    method: "GET"
-                }))
-            })
-        }())
 
 
         Utils.callMultiAsync(0, promises, getSecondaryData, []);
@@ -2092,7 +2764,7 @@ class GridUI {
         var self = this;
         if (self.options && self.options.addRow) {
             // create Add Row
-            this.makeAddRow();
+            //     this.makeAddRow();
         }
         this.createOperations(this.data);
         this.addOperatorColumn(this.fields);
@@ -2139,8 +2811,8 @@ class GridUI {
             cellRenderer: function (value, item) {
                 return ("Hello")
             },
-            height: "500px",
             width: "100%",
+            height: "auto",
             sorting: this.sorting,
             paging: false,
             filtering: this.filtering,
@@ -2258,13 +2930,247 @@ class AnalysisGridUI extends GridUI {
 
 }
 
+class PeopleAssignmentGridUI extends GridUI {
+    constructor(div, map, data, dataObj, options) {
+        super(div, map, data, dataObj, options);
+    }
+
+
+    childDict = {
+        "project": "subproject",
+        "subproject": "stream",
+        "stream": "okr"
+    }
+
+    changedRecords = [];
+
+
+    updateSelectToNewValue(id, entity_type) {
+        var self = this;
+        var select_name = "" + entity_type + id;
+        var new_value = $(`#${select_name}`).val();
+        /* update the select options and selected value to TBD the child entity and below to TBD */
+
+        var index = Utils.searchInDictArray(self.dataObj.assignments, "id", id);
+        var dataObj = self.dataObj;
+        var assignments = dataObj.assignments;
+
+        var entity_array = dataObj[entity_type + "s"];
+        var entity_id_field = entity_type + "_id";
+        var child_name_field = entity_type;
+
+        assignments[index][entity_id_field] = new_value;
+        var value_index = Utils.searchInDictArray(entity_array, entity_id_field, new_value);
+        assignments[index][entity_type] = entity_array[value_index][entity_type];
+
+        // Update children now
+
+        var entities = Object.keys(self.childDict);
+        var selected = -1;
+        for (var i = 0; i < entities.length; i++) {
+            if (entities[i] == entity_type) {
+                selected = i;
+                break;
+            }
+        }
+
+        var parent_value = new_value;
+        var parent_id_field = entity_type + "_id";
+        for (var i = selected; i < entities.length; i++) {
+            var child_type = self.childDict[entities[i]];
+            var child_array = dataObj[child_type + "s"];
+            var child_id_field = child_type + "_id";
+            var child_name_field = child_type;
+            var filter = {};
+            filter[child_name_field] = "TBD";
+            filter[parent_id_field] = parent_value;
+            var value_index = Utils.searchInDictArray(child_array, filter);
+            assignments[index][child_id_field] = child_array[value_index][child_id_field];
+            assignments[index][child_name_field] = child_array[value_index][child_type];
+            parent_value = child_array[value_index][child_id_field]
+            parent_id_field = child_id_field;
+        }
+        self.grid.jsGrid("updateItem", dataObj.assignments[index]);
+    }
+
+    assignDataSelectFunctions(data) {
+        var self = this;
+
+        function updateSelect(id, entity_type) {
+            self.updateSelectToNewValue(id, entity_type, child_entity)
+            self.updateAssignment(id)
+        }
+
+        var entity_types = Object.keys(this.childDict);
+        for (var j = 0; j < entity_types.length; j++) {
+            var entity_type = entity_types[j];
+            var child_entity = this.childDict[entity_type];
+
+            for (var i = 0; i < data.length; i++) {
+                var id = data[i]['id'];
+                $(`#${entity_type}${id}`).select2();
+                $(`#${entity_type}${id}`).on("change", function () {
+                    var _id = id;
+                    var _entity_type = entity_type;
+                    var _child_entity = child_entity;
+                    return (function () {
+                        updateSelect(_id, _entity_type);
+                    })
+                }())
+                $(`#okr${id}`).select2();
+            }
+        }
+
+        for (var i = 0; i < data.length; i++) {
+            var id = data[i]['id'];
+            $(`#assignment${id}`).on("focusout", function () {
+                var _id = id;
+                return (function () {
+                    self.updateAssignment(_id);
+                    var assignment = $(`#assignment${_id}`).val();
+                    self.dataObj.assignments[_id]["assignment"] = assignment;
+                })
+            }())
+
+            $(`#teammember${id}`).select2();
+            $(`#teammember${id}`).on("change", function () {
+                var _id = id;
+                return (function () {
+                    self.updateAssignment(_id);
+                    var teamMemberId = $(`#teammember${_id}`).val();
+                    var teamMemberName = $(`#teammember${_id} option:selected`).text();
+                    var index = Utils.searchInDictArray(self.dataObj.assignments, "id", _id);
+                    self.dataObj.assignments[index]["teammember_id"] = teamMemberId;
+                    self.dataObj.assignments[index]["teammember"] = teamMemberName;
+                })
+            }())
+        }
+    }
+
+
+    assignOperationFunctions(data) {
+        var self = this;
+        var _data = data;
+
+        function deleteRowFunc(i) {
+            var rowNum = i;
+            return function () {
+                self.dataObj.deleteItem(_data[rowNum]);
+                self.grid.jsGrid("deleteItem", _data[rowNum]);
+            }
+        }
+
+
+        for (var i = 0; i < data.length; i++) {
+            $(`#row_delete_${data[i]['id']}`).on("click", deleteRowFunc(i));
+
+        }
+
+
+    }
+
+    updateAssignment(id) {
+        var teamMemberId = $(`#teammember${id}`).val();
+        var okrId = $(`#okr${id}`).val();
+        var assignment = $(`#assignment${id}`).val();
+
+        self.dataObj.updateItem(id, teamMemberId, okrId, assignment).done(
+            function (data) {
+                Utils.showInfo("Item Updated");
+            }
+        ).fail(function (data) {
+                Utils.showError("Item could not be updated");
+            }
+        )
+    }
+
+    makeAddRow() {
+        self = this;
+
+        function addItem() {
+
+        }
+
+        var data = [this.options.addRowData];
+        var fields = [];
+
+        function teammemberFunction(value, item) {
+            return "<td>" + Utils.createSelect("add_teammember", self.dataObj.persons, "id", "name", item["teammember_id"]) + "</td>";
+        }
+
+        function okrFunction(value, item) {
+            return "<td>" + Utils.createSelect("add_okr", self.dataObj.okrs, "okr_id", "okr", item["okr_id"]) + "</td>";
+            return "<td>" + Utils.createSelect("add_okr", self.dataObj.okrs, "okr_id", "okr", item["okr_id"]) + "</td>";
+        }
+
+        function assignmentFunction(value, item) {
+            return `<td><input type="text" id="add_assignment" value="${value}"/></td>`;
+
+        }
+
+        fields.push({"name": "teammember", "width": 100, "cellRenderer": teammemberFunction});
+        fields.push({"name": "okr", "width": 100, "cellRenderer": okrFunction});
+        fields.push({"name": "assignment", "width": 100, "cellRenderer": assignmentFunction});
+        fields.push({
+            "name": "actions", "width": 100, "cellRenderer": function (value, item) {
+                return `<span id="add_link">Add</span>`;
+            }
+        });
+
+        var _grid = $(`#${this.options.addRowDivName}`).jsGrid({
+            height: "50px",
+            width: "100%",
+            sorting: false,
+            paging: false,
+            filtering: false,
+            data: data,
+            heading: false,
+            fields: fields,
+        });
+        self.addRowGrid = _grid;
+
+
+        function addAssignment() {
+            var teamMemberId = $("#add_teammember").val();
+            var okrId = $("#add_okr").val();
+            var assignment = $("#add_assignment").val();
+            var okr = self.dataObj.okrs[Utils.searchInDictArray(self.dataObj.okrs, "okr_id", okrId)]["okr"]
+            var teammember = self.dataObj.persons[Utils.searchInDictArray(self.dataObj.persons, "id", teamMemberId)]["name"]
+
+            var newObjects = [{
+                Ops: "",
+                assignment: assignment,
+                okr: okr,
+                okr_id: okrId,
+                teammember_id: teamMemberId,
+                teammember: teammember
+            }]
+            self.createOperations(newObjects);
+            self.dataObj.addItem(teamMemberId, okrId, assignment).then(
+                function (data) {
+                    self.grid.jsGrid("insertItem", newObjects[0]);
+                }
+            )
+        }
+
+        function saveAssignments() {
+
+        }
+
+        $("#add_link").on("click", addAssignment);
+        $("#save_button").on("click", saveAssignments)
+
+        return _grid;
+    }
+}
+
 class ProjectAssignmentGridUI extends GridUI {
     constructor(div, map, data, dataObj, options) {
         super(div, map, data, dataObj, options);
     }
 
     addOperatorColumn(fields) {
-        fields.unshift({name: "Ops", type: "text", width: "5%"})
+        fields.unshift({name: "Ops", type: "text", width: "15px"})
 
     }
 
@@ -2418,8 +3324,12 @@ class ProjectAssignmentGridUI extends GridUI {
         var okrId = $(`#okr${id}`).val();
         var assignment = $(`#assignment${id}`).val();
 
-        self.dataObj.updateItem(id, teamMemberId, okrId, assignment).then(
+        this.dataObj.updateItem(id, teamMemberId, okrId, assignment).done(
             function (data) {
+                Utils.showInfo("Item Updated");
+            }
+        ).fail(function (data) {
+                Utils.showError("Item could not be updated");
             }
         )
 

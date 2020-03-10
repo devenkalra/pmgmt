@@ -58,6 +58,7 @@ class Project(TimeStamped):
         return {
             "id": self.id,
             "name": self.name,
+
         }
 
     def __str__(self):
@@ -117,6 +118,7 @@ class SubProject(TimeStamped):
         return {
             "id": self.id,
             "name": self.name,
+            "project_id": self.project_id
         }
 
     def __str__(self):
@@ -136,6 +138,8 @@ class Stream(TimeStamped):
         return {
             "id": self.id,
             "name": self.name,
+            "subproject_id": self.subproject_id
+
         }
 
     def __str__(self):
@@ -159,6 +163,8 @@ class Okr(TimeStamped):
         return {
             "id": self.id,
             "name": self.name,
+            "stream_id": self.stream_id
+
         }
 
 

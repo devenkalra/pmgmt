@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>API Test</title>
+    <script src="/static/3rdParty/jquery.js"></script>
+
+</head>
+<body style="font-family: SansSerif;">
+
+Rollup: <textarea id="text_rollup" cols="50" rows="10" style="font-size:12pt">{"fields":["project", "subproject", "stream"], "group_by":["stream"], "filter": {"assignment.quarter_id":["1"],"project.id":["1"],"subproject.id":["10"]}}
+</textarea>
+<button value="Run" id="run_rollup">Run</button>
+<br>
+
+Assignments: <textarea id="text_assignments" cols="50" rows="10" style="font-size:12pt">{"filter": {"assignment.quarter_id":["1"],"project.id":["1"],"subproject.id":["10"]}}</textarea>
+<button value="Run" id="run_assignments">Run</button>
+<br>
+
+List: <textarea id="text_list" cols="50" rows="10" style="font-size:12pt">{"entity_type":"project"}</textarea>
+<button value="Run" id="run_list">Run</button>
+
+<div id="results">
+</div>
+<script>
+
+    url = `http://localhost:8000/project/api/assignment/rollup/{"fields":["project", "subproject", "stream"], "group_by":["stream"], "filter": {"assignment.quarter_id":["1"],"project.id":["1"],"subproject.id":["10"]}}`;
+
+    function doit(type) {
+        if (type == "rollup") {
+            var prefix = "http://localhost:8000/project/api/assignment/rollup/"
+            var suffix = $("#text_rollup").val();
+        } else if (type == "assignments") {
+            var prefix = "http://localhost:8000/project/api/assignment/list/"
+            var suffix = $("#text_assignments").val();
+
+        } else if (type == "list") {
+            var prefix = "http://localhost:8000/project/api/entity/list/"
+            var suffix = $("#text_list").val();
+
+        }
+        var url = prefix + suffix;
+        $.ajax({
+            "url": url,
+            method: "GET"
+        }).done(function (response) {
+            var data = response["data"]["entities"];
+            var html = JSON.stringify(data, undefined, 4);
+            html = html.replace(/\n/g, "<br>");
+                      html = html.replace(/ /g, "&nbsp;");
+                    $("#results").html(html);
+            var keys = /"([a-zA-Z0-9_ ]+)":/m;
+            var first = "";
+            var working = html;
+            var second = "";
+            /*
+            while ((match = keys.exec(working)) !== null) {
+                first = working.substr(0, match["index"] + match[0].length);
+                first = first.replace(match[1], `<span style="color:green">${match[1]}</span>`)
+                second = second + first;
+
+                working = working.substr(match["index"] + match[0].length)
+                $("#results").html(second + working);
+
+            }
+            second = second + working;
+            $("#results").html(second);
+            */
+            $("#results").html(html);
+        }).fail(function(a, b, c){
+            console.log(a);
+        })
+    }
+
+
+    $("#run_rollup").on("click", function () {
+        doit("rollup");
+    });
+    $("#run_list").on("click", function () {
+        doit("list");
+    });
+    $("#run_assignments").on("click", function () {
+        doit("assignments");
+    });
+</script>
+
+</body>
+</html>

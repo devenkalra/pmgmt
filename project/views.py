@@ -100,11 +100,13 @@ def detail_entity(entity_type, entity, depth):
 from django.db.models import Q, Count, Sum
 from django.db import connection
 
+
 class Schema:
     hierarchy = ["project", "subproject", "stream", "okr"]
-    person_fields = ["teammember.location", "teammember.manager", "teammember.status", "teammemberldap"]
-    person_attribute_fields = ["function.id", "role.id", "orgrole.id"]
+    person_fields = ["location", "manager", "status", "ldap"]
+    person_attribute_fields = ["function", "role", "orgrole"]
     feature_attribute_fields = ["featuredriver"]
+    int_fields = ["assignment.quarter_id"]
 
 
 def json_assignment_rollup(request, crit):
@@ -140,9 +142,9 @@ def json_assignment_rollup(request, crit):
 
             additional_join_tables["teammember"] = {"table": "project_teammember", "as": "teammember",
                                                     "where": "AND teammember.id = assignment.teammember_id "}
-            table_name = field[0: field.index(".id")]
+            table_name = field
             additional_join_tables[field] = {"table": "project_%s" % table_name, "as": table_name,
-                                             "where": "AND %s = teammember.%s_id " % (field, table_name)}
+                                             "where": "AND %s.id = teammember.%s_id " % (field, table_name)}
             separator = ", "
 
     filter = None
@@ -150,15 +152,16 @@ def json_assignment_rollup(request, crit):
     if ("filter" in crit):
         filter_fields = crit["filter"]
         for filter_field in filter_fields:
-            if(filter_field in Schema.person_fields):
+            if (filter_field in Schema.person_fields):
                 additional_join_tables["teammember"] = {"table": "project_teammember", "as": "teammember",
                                                         "where": "AND teammember.id = assignment.teammember_id "}
             elif filter_field in Schema.person_attribute_fields:
-                table_name = filter_field[0:filter_field.index(".id")]
+                table_name = filter_field
                 additional_join_tables["teammember"] = {"table": "project_teammember", "as": "teammember",
                                                         "where": "AND teammember.id = assignment.teammember_id "}
                 additional_join_tables[table_name] = {"table": "project_%s" % table_name, "as": table_name,
-                                                  "where": "AND %s = teammember.%s_id " % (filter_field, table_name)}
+                                                      "where": "AND %s.id = teammember.%s_id " % (
+                                                      filter_field, table_name)}
 
         filter = crit["filter"]
         print(filter)
@@ -215,6 +218,72 @@ def json_assignment_rollup(request, crit):
 # from project_subproject as subproject, project_okr as okr, project_assignment as a, project_stream as stream
 # Where a.okr_id = okr.id and okr.stream_id = stream.id and stream.subproject_id = subproject.id group by subproject.name
 
+def json_entities_for_filter(request, crit):
+    crit = json.loads(crit)
+    dict = {}
+    dict["functions"] = list(map(lambda x:x.as_dict(), Function.objects.all()))
+    dict["quarters"] = list(map(lambda x:x.as_dict(), Quarter.objects.all()))
+    dict["projects"] = list(map(lambda x:x.as_dict(), Project.objects.all()))
+    if ("project.id" in crit):
+        project_ids = crit["project.id"]
+        dict["subprojects"] = list(map(lambda x:x.as_dict(), SubProject.objects.filter(project_id__in=project_ids)))
+    else:
+        dict["subprojects"] = []
+
+    if ("subproject.id" in crit):
+        subproject_ids = crit["subproject.id"]
+        dict["streams"] = list(map(lambda x:x.as_dict(), Stream.objects.filter(subproject_id__in=subproject_ids)))
+    else:
+        dict["streams"] = []
+
+
+    return HttpResponse(json.dumps({"status": {"code": 0, "message": "success"}, "data": dict}),
+                    content_type='application/json')
+
+
+def json_subobjects(request, crit):
+    crit = json.loads(crit)
+    dict = {}
+    project_ids = crit["projects"]
+    subproject_ids = crit["subprojects"]
+    stream_ids = crit["streams"]
+
+    subprojects = list(map(lambda x:x.as_dict(),SubProject.objects.filter(project_id__in=project_ids)))
+    streams = list(map(lambda x:x.as_dict(),Stream.objects.filter(subproject_id__in=subproject_ids)))
+    okrs = list(map(lambda x:x.as_dict(),Okr.objects.filter(stream_id__in=stream_ids)))
+
+    subproject_dict = {}
+    for project_id in project_ids:
+        subproject_dict[project_id] = []
+
+    for subproject in subprojects:
+        subproject_dict[subproject["project_id"]].append(subproject);
+
+    stream_dict = {}
+    for subproject_id in subproject_ids:
+        stream_dict[subproject_id] = []
+
+    for stream in streams:
+        stream_dict[stream["subproject_id"]].append(stream);
+
+    okr_dict = {}
+
+    for stream_id in stream_ids:
+        okr_dict[stream_id] = []
+
+    for okr in okrs:
+        okr_dict[okr["stream_id"]].append(okr);
+
+
+    dict["subprojects"] = subproject_dict
+    dict["streams"] = stream_dict
+    dict["okrs"] = okr_dict
+
+
+    return HttpResponse(json.dumps({"status": {"code": 0, "message": "success"}, "data": dict}),
+                    content_type='application/json')
+
+
 def json_assignments(request, crit):
     # Filter should have
     #   group_by entity_type (project, sub project etc)
@@ -223,14 +292,16 @@ def json_assignments(request, crit):
     #   { group_by:[project, subproject], filter: {quarter:[a, b], function:[swe, mgr]}
 
     crit = json.loads(crit)
-    fields = crit["fields"]
+    fields = []
+    if ("fields" in crit):
+        fields = crit["fields"]
 
     additional_join_tables = {};
     where_clause = "where project.id = subproject.project_id and assignment.okr_id = okr.id and okr.stream_id = stream.id "
     where_clause += "and stream.subproject_id = subproject.id "
     where_clause += "{where} "
 
-    select_clause = "select assignment.id as id, okr.name as okr, okr.id as okr_id, stream.name as stream, stream.id as stream_id, "
+    select_clause = "select assignment.id as id, assignment.quarter_id, okr.name as okr, okr.id as okr_id, stream.name as stream, stream.id as stream_id, "
     select_clause += "teammember.name as teammember, teammember.id as teammember_id, "
     select_clause += "subproject.name as subproject, subproject.id as subproject_id, "
     select_clause += "project.name as project, project.id as project_id, assignment.assignment as assignment "
@@ -251,13 +322,12 @@ def json_assignments(request, crit):
             separator = ", "
         elif field in Schema.person_attribute_fields:
             print("PAF Field=", field)
-            table_name = field[0: field.index(".id")]
+            table_name = field
             additional_join_tables[table_name] = {"table": "project_%s" % table_name, "as": table_name,
-                                             "where": "AND %s = teammember.%s_id " % (field, table_name)}
+                                                  "where": "AND %s.id = teammember.%s_id " % (field, table_name)}
             separator = ", "
-            select_clause += separator + "%s.name as %s " % (field, field)
+            select_clause += separator + "%s.id as %s_id, %s.name as %s_name " % (field, field, field, field)
             separator = ", "
-
 
     filter = None
     filter_sql = ""
@@ -268,10 +338,11 @@ def json_assignments(request, crit):
                 additional_join_tables["teammember"] = {"table": "project_teammember", "as": "teammember",
                                                         "where": "AND teammember.id = assignment.teammember_id "}
             elif filter_field in Schema.person_attribute_fields:
-                print ("ff=%s"%filter_field)
-                table_name = filter_field[0:filter_field.index(".id")]
+                print("ff=%s" % filter_field)
+                table_name = filter_field
                 additional_join_tables[table_name] = {"table": "project_%s" % table_name, "as": table_name,
-                                                 "where": "AND %s = teammember.%s_id " % (filter_field, table_name)}
+                                                      "where": "AND %s.id = teammember.%s_id " % (
+                                                      filter_field, table_name)}
 
         filter = crit["filter"]
         print(filter)
@@ -289,14 +360,21 @@ def json_assignments(request, crit):
     sql += where_clause
     separator = ""
 
+    sort_clause = ""
+    if ("order by" in crit):
+        orderby = crit["order by"]
+        sort_clause = " order by "
+        for key in orderby:
+            sort_clause = sort_clause + separator + key
+            separator = ", "
+
+    sql += sort_clause
     print(sql)
     sql = sql.replace("{where}", filter_sql)
-
 
     print("filter_sql=", filter_sql)
     if (filter_sql != ""):
         filter_sql = "and " + filter_sql
-
 
     data = {"sql": sql}
     print("Sql=" + sql)
@@ -477,6 +555,72 @@ def project_assignments(request, crit):
         })
 
 
+def people_assignments(request, crit):
+    project_id = 0;
+    quarter_id = 0;
+    subproject_id = 0;
+    stream_id = 0;
+
+    crit = json.loads(crit)
+
+    if ("fields" in crit):
+        fields = crit["fields"]
+    else:
+        fields = {}
+
+    if ("filter" in crit):
+        filter = crit["filter"]
+
+        return render(request, 'people_assignments.html', {
+            'entityType': "person",
+            'entityTypePlural': "persons",
+            'filter': json.dumps(filter)
+        })
+
+    else:
+        return render(request, 'people_assignments.html', {
+            'entityType': "person",
+            'entityTypePlural': "persons",
+            'project_id': -1,
+            'quarter_id': -1,
+            'subproject_id': -1,
+            'stream_id': -1
+        })
+
+
+def people_quarters(request, crit):
+    project_id = 0;
+    quarter_id = 0;
+    subproject_id = 0;
+    stream_id = 0;
+
+    crit = json.loads(crit)
+
+    if ("fields" in crit):
+        fields = crit["fields"]
+    else:
+        fields = {}
+
+    if ("filter" in crit):
+        filter = crit["filter"]
+
+        return render(request, 'people_quarters.html', {
+            'entityType': "person",
+            'entityTypePlural': "persons",
+            'filter': json.dumps(filter)
+        })
+
+    else:
+        return render(request, 'people_assignments.html', {
+            'entityType': "person",
+            'entityTypePlural': "persons",
+            'project_id': -1,
+            'quarter_id': -1,
+            'subproject_id': -1,
+            'stream_id': -1
+        })
+
+
 def analysis(request, crit):
     project_id = 0;
     quarter_id = 0;
@@ -506,13 +650,16 @@ def create_filter_object(filter):
     filter_components = filter.keys()
     sql = ""
     for subfilter in filter_components:
-        if (subfilter.endswith(".id")):
+        if (subfilter.endswith(".id") or subfilter in Schema.int_fields):
             sub_sql = subfilter + " in (" + ",".join(str(element) for element in filter[subfilter]) + ")"
         else:  # string
             substr = "";
             sep = ""
             for element in filter[subfilter]:
-                substr += sep + subfilter + ' like "%%%s%%" ' % element
+                if (subfilter in Schema.person_attribute_fields):
+                    substr += sep + subfilter + '.id like "%%%s%%" ' % element
+                else:
+                    substr += sep + subfilter + ' like "%%%s%%" ' % element
                 sep = " or "
             sub_sql = (substr)
 
